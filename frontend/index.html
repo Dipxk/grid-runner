@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Grid Runner — Warehouse Fleet Coordination</title>
+    <meta
+      name="description"
+      content="Live multi-agent warehouse robot fleet simulator with space-time reservation collision avoidance."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f1d22'/%3E%3Crect x='7' y='7' width='8' height='8' rx='2' fill='%231d9c8f'/%3E%3Crect x='17' y='17' width='8' height='8' rx='2' fill='%23e0902f'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div class="app" id="app">
+      <!-- ── rail ─────────────────────────────────────────────── -->
+      <aside class="rail">
+        <header class="brand">
+          <div class="brand__mark" aria-hidden="true">
+            <span class="brand__cell brand__cell--a"></span>
+            <span class="brand__cell brand__cell--b"></span>
+            <span class="brand__cell brand__cell--c"></span>
+            <span class="brand__cell brand__cell--d"></span>
+          </div>
+          <div class="brand__text">
+            <h1 class="brand__name">Grid<span>Runner</span></h1>
+            <p class="brand__tag">Warehouse fleet coordination</p>
+          </div>
+          <div class="brand__live" id="connection" data-state="connecting">
+            <span class="dot"></span><span class="label">live</span>
+          </div>
+        </header>
+
+        <section class="metrics" aria-label="Live metrics">
+          <div class="metric metric--hero">
+            <span class="metric__label">Tasks / hour</span>
+            <span class="metric__value" data-metric="tasksPerHour">0</span>
+            <canvas class="metric__spark" id="spark" height="34"></canvas>
+          </div>
+
+          <div class="metric-grid">
+            <div class="metric">
+              <span class="metric__label">Active robots</span>
+              <span class="metric__value metric__value--sm">
+                <span data-metric="activeRobots">0</span
+                ><span class="metric__suffix" data-metric-raw="fleetSize">/0</span>
+              </span>
+            </div>
+            <div class="metric">
+              <span class="metric__label">Avg task time</span>
+              <span class="metric__value metric__value--sm">
+                <span data-metric="avgTaskSeconds">0</span><span class="metric__suffix">s</span>
+              </span>
+            </div>
+            <div class="metric">
+              <span class="metric__label">Delivered</span>
+              <span class="metric__value metric__value--sm" data-metric="tasksCompleted">0</span>
+            </div>
+            <div class="metric">
+              <span class="metric__label">Queue</span>
+              <span class="metric__value metric__value--sm" data-metric="pendingTasks">0</span>
+            </div>
+          </div>
+
+          <div class="compute">
+            <div class="compute__head">
+              <span class="metric__label">Tick compute</span>
+              <span class="compute__value">
+                <span data-metric="tickComputeMs">0</span><span class="metric__suffix">ms</span>
+                <span class="compute__budget">of <span data-raw="budget">167</span>ms budget</span>
+              </span>
+            </div>
+            <div class="compute__bar"><i id="compute-fill" style="width:0%"></i></div>
+            <div class="compute__foot">
+              <span>p95 <b data-metric="tickComputeP95Ms">0</b>ms</span>
+              <span class="safe" id="collision-badge">collisions <b data-metric="collisions">0</b></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="legend" aria-label="Legend">
+          <h2 class="section-title">Robot status</h2>
+          <ul class="legend__list">
+            <li><i class="swatch" data-status="idle"></i>Idle · parked</li>
+            <li><i class="swatch" data-status="to_pickup"></i>En route to pickup</li>
+            <li><i class="swatch" data-status="carrying"></i>Carrying to dropoff</li>
+            <li><i class="swatch" data-status="rerouting"></i>Rerouting around jam</li>
+          </ul>
+          <h2 class="section-title">Floor</h2>
+          <ul class="legend__list legend__list--floor">
+            <li><i class="swatch swatch--shelf"></i>Shelving</li>
+            <li><i class="swatch swatch--pick"></i>Pick face</li>
+            <li><i class="swatch swatch--drop"></i>Dropoff station</li>
+            <li><i class="swatch swatch--jam"></i>Jam zone</li>
+          </ul>
+        </section>
+
+        <footer class="rail__foot">
+          <span>Space-time reservation planner</span>
+          <span class="rail__hint"><kbd>Space</kbd> pause · <kbd>J</kbd> jam · <kbd>B</kbd> burst</span>
+        </footer>
+      </aside>
+
+      <!-- ── stage ────────────────────────────────────────────── -->
+      <main class="stage">
+        <canvas id="scene" aria-label="Warehouse floor simulation"></canvas>
+
+        <div class="stage__topbar">
+          <div class="tick-readout">
+            <span class="tick-readout__label">tick</span>
+            <span class="tick-readout__value" id="tick-value">0</span>
+          </div>
+          <div class="jam-hint" id="jam-hint" hidden>Click a floor cell to drop a jam</div>
+        </div>
+
+        <div class="dock" role="toolbar" aria-label="Simulation controls">
+          <button class="dock__btn dock__btn--primary" id="btn-play" title="Play / pause (Space)">
+            <svg viewBox="0 0 24 24" class="icon icon--pause"><rect x="7" y="5" width="3.6" height="14" rx="1.2"/><rect x="13.4" y="5" width="3.6" height="14" rx="1.2"/></svg>
+            <svg viewBox="0 0 24 24" class="icon icon--play"><path d="M8 5.5v13l11-6.5z"/></svg>
+            <span class="dock__label" id="play-label">Pause</span>
+          </button>
+
+          <div class="dock__group" id="speeds" role="group" aria-label="Speed">
+            <button class="chip" data-speed="3">0.5×</button>
+            <button class="chip is-active" data-speed="6">1×</button>
+            <button class="chip" data-speed="12">2×</button>
+            <button class="chip" data-speed="20">4×</button>
+          </div>
+
+          <div class="dock__sep"></div>
+
+          <label class="dock__slider">
+            <span>Fleet</span>
+            <input type="range" id="fleet" min="4" max="100" step="1" value="18" />
+            <output id="fleet-value">18</output>
+          </label>
+
+          <div class="dock__sep"></div>
+
+          <button class="dock__btn" id="btn-burst" title="Add 10 tasks (B)">
+            <svg viewBox="0 0 24 24" class="icon"><path d="M12 4v16M4 12h16" stroke-width="2.4" stroke-linecap="round" fill="none" stroke="currentColor"/></svg>
+            <span class="dock__label">Task burst</span>
+          </button>
+
+          <button class="dock__btn dock__btn--toggle" id="btn-jam" title="Jam mode (J)">
+            <svg viewBox="0 0 24 24" class="icon"><path d="M12 3.6 22 20H2z" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/><path d="M12 10v4.4" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/><circle cx="12" cy="17.4" r="1.15" fill="currentColor"/></svg>
+            <span class="dock__label">Jam mode</span>
+          </button>
+
+          <button class="dock__btn" id="btn-reset" title="Reset simulation">
+            <svg viewBox="0 0 24 24" class="icon"><path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v4.6h-4.6" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="dock__label">Reset</span>
+          </button>
+        </div>
+
+        <!-- robot inspector -->
+        <aside class="inspector" id="inspector" aria-live="polite">
+          <button class="inspector__close" id="inspector-close" aria-label="Close">×</button>
+          <div class="inspector__head">
+            <span class="inspector__eyebrow">Robot</span>
+            <h2 class="inspector__id" id="insp-id">—</h2>
+            <span class="pill" id="insp-status">idle</span>
+          </div>
+          <dl class="inspector__rows">
+            <div><dt>Position</dt><dd id="insp-pos">—</dd></div>
+            <div><dt>Task</dt><dd id="insp-task">none</dd></div>
+            <div><dt>Destination</dt><dd id="insp-dest">—</dd></div>
+            <div><dt>Steps remaining</dt><dd id="insp-eta">—</dd></div>
+            <div><dt>Queued tasks</dt><dd id="insp-queue">0</dd></div>
+          </dl>
+          <div class="inspector__stats">
+            <div><span id="insp-completed">0</span><small>delivered</small></div>
+            <div><span id="insp-replans">0</span><small>replans</small></div>
+            <div><span id="insp-reroutes">0</span><small>reroutes</small></div>
+            <div><span id="insp-blocked">0</span><small>yields</small></div>
+          </div>
+          <p class="inspector__note">Planned path highlighted on the floor.</p>
+        </aside>
+
+        <div class="toasts" id="toasts" aria-live="polite"></div>
+      </main>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

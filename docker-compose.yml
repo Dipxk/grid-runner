@@ -1,0 +1,19 @@
+services:
+  gridrunner:
+    build: .
+    container_name: gridrunner
+    ports:
+      - "8000:8000"
+    environment:
+      # Any SimConfig field can be overridden via GRIDRUNNER_* env vars.
+      GRIDRUNNER_FLEET_SIZE: "18"
+      GRIDRUNNER_TICKS_PER_SECOND: "6"
+    volumes:
+      # Live-reload the demo while iterating locally.
+      - ./backend:/app/backend
+      - ./frontend:/app/frontend
+    command: >
+      uvicorn app.server:app
+      --host 0.0.0.0 --port 8000
+      --reload --reload-dir /app/backend
+    restart: unless-stopped
