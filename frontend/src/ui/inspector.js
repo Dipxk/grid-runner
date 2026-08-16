@@ -44,7 +44,8 @@ export class Inspector {
 
     if (robot.task) {
       const verb = robot.task.state === 'carried' ? 'carrying' : 'fetching';
-      f.task.textContent = `#${robot.task.id} · ${verb}`;
+      const rush = robot.task.rush ? ' · RUSH' : '';
+      f.task.textContent = `#${robot.task.id} · ${verb}${rush}`;
       const dest = robot.task.state === 'carried' ? robot.task.dropoff : robot.task.pickup;
       f.dest.textContent = `${dest[0]}, ${dest[1]}`;
     } else {

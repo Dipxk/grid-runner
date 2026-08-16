@@ -37,6 +37,8 @@ class Task:
     assigned_tick: Optional[int] = None
     picked_tick: Optional[int] = None
     done_tick: Optional[int] = None
+    #: Dispatcher rush order — jumps the allocation queue.
+    rush: bool = False
 
     @property
     def wait_ticks(self) -> Optional[int]:
@@ -57,6 +59,7 @@ class Task:
             "state": self.state,
             "createdTick": self.created_tick,
             "assignedTo": self.assigned_to,
+            "rush": self.rush,
         }
 
 
@@ -145,6 +148,7 @@ class Robot:
                 "state": self.task.state,
                 "pickup": list(self.task.pickup),
                 "dropoff": list(self.task.dropoff),
+                "rush": self.task.rush,
                 "ageTicks": None,
             }
         payload["queue"] = [t.id for t in self.queue]

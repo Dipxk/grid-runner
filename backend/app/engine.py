@@ -37,7 +37,7 @@ from .metrics import MetricsTracker
 from .models import Robot, RobotStatus, Task, TaskState
 from .pathfinding import plan_path
 from .reservation import ReservationTable
-from .world import CHARGER, DROPOFF, FLOOR, World, manhattan
+from .world import CHARGER, DROPOFF, FLOOR, PICKUP, World, manhattan
 
 Cell = Tuple[int, int]
 
@@ -51,6 +51,32 @@ STATUS_RANK = {
 #: How long a robot keeps the "rerouting" colour after a forced replan. Long
 #: enough (~2.3 s at 6 Hz) that a viewer actually sees the fleet react to a jam.
 REROUTE_FLASH_TICKS = 14
+
+BLACK_FRIDAY = {
+    "id": "black_friday",
+    "title": "Black Friday",
+    "blurb": "Peak hour. The main aisle is blocked. Keep the docks moving.",
+    "fleet": 32,
+    "duration": 180,
+    "target": 100,
+    "seed": 42,
+    "initial_tasks": 36,
+}
+
+
+def _scenario_grade(delivered: int, target: int, collisions: int) -> str:
+    if collisions:
+        return "F"
+    ratio = delivered / max(1, target)
+    if ratio >= 1.2:
+        return "S"
+    if ratio >= 1.0:
+        return "A"
+    if ratio >= 0.7:
+        return "B"
+    if ratio >= 0.4:
+        return "C"
+    return "D"
 
 
 class SimulationEngine:
@@ -72,6 +98,9 @@ class SimulationEngine:
         self.pending: List[Task] = []
         self._next_task_id = 1
         self.events: List[Dict[str, Any]] = []
+        self.scenario: Optional[Dict[str, Any]] = None
+        #: When True, ambient random demand is off — only dispatcher-placed orders.
+        self.manual_demand: bool = False
         self._parking: List[Cell] = self._parking_spots()
         self._spawn_fleet(self.config.fleet_size)
         for _ in range(self.config.initial_tasks):
@@ -142,16 +171,23 @@ class SimulationEngine:
     # ------------------------------------------------------------------
     # tasks
     # ------------------------------------------------------------------
-    def _spawn_task(self) -> Optional[Task]:
+    def _spawn_task(
+        self,
+        pickup: Optional[Cell] = None,
+        dropoff: Optional[Cell] = None,
+        rush: bool = False,
+    ) -> Optional[Task]:
         if len(self.pending) >= self.config.max_pending_tasks:
             return None
-        pickup = self.rng.choice(self.world.pickups)
-        dropoff = self.rng.choice(self.world.dropoffs)
+        pickup = pickup if pickup is not None else self.rng.choice(self.world.pickups)
+        dropoff = dropoff if dropoff is not None else self.rng.choice(self.world.dropoffs)
+        created = self.tick - 90 if rush else self.tick
         task = Task(
             id=self._next_task_id,
             pickup=pickup,
             dropoff=dropoff,
-            created_tick=self.tick,
+            created_tick=created,
+            rush=rush,
         )
         self._next_task_id += 1
         self.tasks[task.id] = task
@@ -166,6 +202,87 @@ class SimulationEngine:
         if created:
             self.events.append({"type": "burst", "count": created, "tick": self.tick})
         return created
+
+    def _resolve_cell(self, cell: Cell, kind: int) -> Optional[Cell]:
+        if self.world.cell_type(cell) == kind:
+            return cell
+        x, y = cell
+        for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if self.world.in_bounds(n) and self.world.cell_type(n) == kind:
+                return n
+        return None
+
+    def add_rush_order(self, cell: Cell) -> Dict[str, Any]:
+        """Dispatcher: spawn a high-priority pick at this face."""
+        pickup = self._resolve_cell(cell, PICKUP)
+        if pickup is None:
+            return {"ok": False, "reason": "click a pick face"}
+        task = self._spawn_task(pickup=pickup, rush=True)
+        if task is None:
+            return {"ok": False, "reason": "queue is full"}
+        if self.scenario and self.scenario.get("active"):
+            self.scenario["rushOrders"] = int(self.scenario.get("rushOrders", 0)) + 1
+        self.events.append(
+            {
+                "type": "rush",
+                "task": task.id,
+                "cell": list(pickup),
+                "tick": self.tick,
+            }
+        )
+        return {"ok": True, "action": "added", "task": task.id, "cell": list(pickup)}
+
+    def place_order(self, pickup_cell: Cell, dropoff_cell: Cell) -> Dict[str, Any]:
+        """Dispatcher: authored pick → dock, jumps the allocation queue."""
+        pickup = self._resolve_cell(pickup_cell, PICKUP)
+        if pickup is None:
+            return {"ok": False, "reason": "click a pick slot"}
+        dropoff = self._resolve_cell(dropoff_cell, DROPOFF)
+        if dropoff is None:
+            return {"ok": False, "reason": "click a dock door"}
+        task = self._spawn_task(pickup=pickup, dropoff=dropoff, rush=True)
+        if task is None:
+            return {"ok": False, "reason": "queue is full"}
+        if self.scenario and self.scenario.get("active"):
+            self.scenario["rushOrders"] = int(self.scenario.get("rushOrders", 0)) + 1
+        self.events.append(
+            {
+                "type": "order",
+                "task": task.id,
+                "pickup": list(pickup),
+                "dropoff": list(dropoff),
+                "tick": self.tick,
+            }
+        )
+        return {
+            "ok": True,
+            "action": "added",
+            "task": task.id,
+            "pickup": list(pickup),
+            "dropoff": list(dropoff),
+        }
+
+    def set_manual_demand(self, manual: bool) -> Dict[str, Any]:
+        """Pause or resume ambient random orders. Assigned work keeps rolling."""
+        self.manual_demand = bool(manual)
+        dropped = 0
+        if self.manual_demand:
+            kept: List[Task] = []
+            for task in self.pending:
+                if task.rush:
+                    kept.append(task)
+                else:
+                    dropped += 1
+            self.pending = kept
+        self.events.append(
+            {
+                "type": "demand",
+                "manual": self.manual_demand,
+                "dropped": dropped,
+                "tick": self.tick,
+            }
+        )
+        return {"ok": True, "manual": self.manual_demand, "dropped": dropped}
 
     def effective_spawn_rate(self) -> float:
         """Tasks per tick: explicit if configured, otherwise scaled to fleet.
@@ -184,6 +301,8 @@ class SimulationEngine:
         # saturate the fleet; without a ceiling a small surplus compounds into a
         # queue that only inflates avg-task-time (mostly wait, not driving).
         # Bursts still bypass this: an operator-triggered spike should be felt.
+        if self.manual_demand:
+            return
         if len(self.pending) >= max(4, len(self.robots) // 4):
             return
         rate = self.effective_spawn_rate()
@@ -206,6 +325,8 @@ class SimulationEngine:
         jam = self.world.add_jam(cell, self.tick, duration)
         if jam is None:
             return {"ok": False, "reason": "cell cannot be jammed"}
+        if self.scenario and self.scenario.get("active"):
+            self.scenario["jamsPlaced"] = int(self.scenario.get("jamsPlaced", 0)) + 1
         self.events.append(
             {
                 "type": "jam_added",
@@ -253,6 +374,81 @@ class SimulationEngine:
                 self.pending.append(task)
 
     # ------------------------------------------------------------------
+    # scenario
+    # ------------------------------------------------------------------
+    def begin_black_friday(self) -> Dict[str, Any]:
+        """Seed the named dispatcher scenario: blocked aisle, peak demand."""
+        spec = BLACK_FRIDAY
+        self._seed_incident_jams(spec["duration"] + 20)
+        self.add_task_burst(18)
+        self.scenario = {
+            "id": spec["id"],
+            "title": spec["title"],
+            "blurb": spec["blurb"],
+            "startTick": self.tick,
+            "duration": spec["duration"],
+            "target": spec["target"],
+            "startCompleted": self.metrics.total_completed,
+            "delivered": 0,
+            "jamsPlaced": 0,
+            "rushOrders": 0,
+            "active": True,
+            "grade": None,
+            "score": 0,
+            "remaining": spec["duration"],
+        }
+        self.events.append({"type": "scenario_start", "id": spec["id"], "tick": self.tick})
+        return self.scenario_payload()
+
+    def _seed_incident_jams(self, duration: int) -> None:
+        """Block a stretch of a busy east-west aisle so the fleet has to reroute."""
+        h, w = self.world.height, self.world.width
+        y = max(self.config.margin + 1, min(h - 4, h // 2 + 1))
+        jammed = 0
+        for x in range(w // 4, (3 * w) // 4):
+            cell = (x, y)
+            if self.world.cell_type(cell) != FLOOR:
+                continue
+            if self.world.add_jam(cell, self.tick, duration) is None:
+                continue
+            self._invalidate_plans_touching(cell)
+            jammed += 1
+            if jammed >= 7:
+                break
+        if jammed:
+            self.events.append(
+                {"type": "jam_added", "cell": [w // 2, y], "tick": self.tick, "expires": self.tick + duration}
+            )
+
+    def _tick_scenario(self) -> None:
+        sc = self.scenario
+        if not sc or not sc.get("active"):
+            return
+        delivered = self.metrics.total_completed - int(sc["startCompleted"])
+        elapsed = self.tick - int(sc["startTick"])
+        sc["delivered"] = delivered
+        sc["remaining"] = max(0, int(sc["duration"]) - elapsed)
+        sc["score"] = delivered * 12 + int(sc.get("rushOrders", 0)) * 8
+        if elapsed >= int(sc["duration"]):
+            sc["active"] = False
+            sc["grade"] = _scenario_grade(delivered, int(sc["target"]), self.metrics.collisions)
+            self.events.append(
+                {
+                    "type": "scenario_over",
+                    "id": sc["id"],
+                    "grade": sc["grade"],
+                    "score": sc["score"],
+                    "delivered": delivered,
+                    "tick": self.tick,
+                }
+            )
+
+    def scenario_payload(self) -> Optional[Dict[str, Any]]:
+        if not self.scenario:
+            return None
+        return dict(self.scenario)
+
+    # ------------------------------------------------------------------
     # main tick
     # ------------------------------------------------------------------
     def step(self) -> Dict[str, Any]:
@@ -276,6 +472,7 @@ class SimulationEngine:
         compute_ms = (time.perf_counter() - started) * 1000.0
         self.metrics.collisions += collisions
         self.metrics.record_tick(self.tick, compute_ms)
+        self._tick_scenario()
         return self.snapshot()
 
     # ------------------------------------------------------------------
@@ -586,7 +783,13 @@ class SimulationEngine:
                 self.table.release_agent(robot.id)
                 robot.invalidate_plan()
                 self.events.append(
-                    {"type": "picked", "robot": robot.id, "cell": list(robot.pos), "tick": now}
+                    {
+                        "type": "picked",
+                        "robot": robot.id,
+                        "task": task.id,
+                        "cell": list(robot.pos),
+                        "tick": now,
+                    }
                 )
             elif task.state == TaskState.CARRIED and robot.pos == task.dropoff:
                 task.state = TaskState.DONE
@@ -634,6 +837,7 @@ class SimulationEngine:
                     "state": robot.task.state,
                     "pickup": list(robot.task.pickup),
                     "dropoff": list(robot.task.dropoff),
+                    "rush": robot.task.rush,
                     "ageTicks": self.tick - robot.task.created_tick,
                 }
             robots_payload.append(payload)
@@ -670,6 +874,17 @@ class SimulationEngine:
                 fleet=len(self.robots),
                 pending=len(self.pending),
             ),
+            "scenario": self.scenario_payload(),
+            "manualDemand": self.manual_demand,
+            "dispatch": [
+                {
+                    "id": t.id,
+                    "pickup": list(t.pickup),
+                    "dropoff": list(t.dropoff),
+                }
+                for t in self.pending
+                if t.rush
+            ],
         }
 
     def world_payload(self) -> Dict[str, Any]:

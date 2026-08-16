@@ -19,6 +19,10 @@ import { MetricsPanel } from './ui/metrics.js';
 import { Inspector } from './ui/inspector.js';
 import { Controls } from './ui/controls.js';
 import { Toasts } from './ui/toasts.js';
+import { ScenarioHud } from './ui/scenario.js';
+import { SoundBed } from './audio/sound.js';
+import { OpsTicker } from './ui/ticker.js';
+import { CELL_TYPE } from './theme.js';
 
 const canvas = document.getElementById('scene');
 const ctx = canvas.getContext('2d');
@@ -31,13 +35,18 @@ const buffer = new TickBuffer();
 const metrics = new MetricsPanel();
 const toasts = new Toasts(document.getElementById('toasts'));
 const inspector = new Inspector(document, { onClose: () => selectRobot(null) });
+const scenarioHud = new ScenarioHud(document);
+const sound = new SoundBed();
+const ticker = new OpsTicker(document);
+const followChip = document.getElementById('follow-chip');
 
 const state = {
   world: null,
   selectedId: null,
   hoverCell: null,
   hoverRobotId: null,
-  jamMode: false,
+  tool: 'none',
+  orderPickup: null,
   dpr: window.devicePixelRatio || 1,
   lastFrame: performance.now(),
   seenEventTick: -1,
@@ -55,6 +64,7 @@ const socket = new SimSocket({
     metrics.setBudget(msg.tickIntervalMs);
     controls.setRunning(msg.running);
     controls.syncFleet(msg.fleetSize);
+    controls.syncDemand(msg.manualDemand);
     resize();
     if (msg.snapshot) ingest(msg.snapshot);
   },
@@ -63,6 +73,7 @@ const socket = new SimSocket({
     metrics.setBudget(msg.tickIntervalMs);
     controls.syncFleet(msg.fleetSize);
     controls.setRunning(msg.running);
+    if (typeof msg.manualDemand === 'boolean') controls.syncDemand(msg.manualDemand);
     ingest(msg);
   },
   onAck: (msg) => {
@@ -77,6 +88,37 @@ const socket = new SimSocket({
       else if (msg.jam.action === 'cleared') toasts.show(`Jam cleared at ${x}, ${y}`, 'good');
       else toasts.show(`Jam dropped at ${x}, ${y}`, 'warn');
     }
+    if (msg.rush) {
+      if (!msg.rush.ok) toasts.show(msg.rush.reason === 'click a pick face' ? 'Rush orders go on a pick face' : 'Could not place rush order', 'bad');
+      else {
+        toasts.show(`Rush order #${msg.rush.task} at ${msg.rush.cell[0]}, ${msg.rush.cell[1]}`, 'good');
+        sound.rush();
+      }
+    }
+    if (msg.order) {
+      if (!msg.order.ok) {
+        toasts.show(msg.order.reason === 'click a dock door' ? 'Finish on a dock door' : 'Start on a pick slot', 'bad');
+      } else {
+        toasts.show(`Order #${msg.order.task} · ${doorLabel(msg.order.dropoff)}`, 'good');
+        sound.rush();
+        state.orderPickup = null;
+        controls.setOrderHint('pick');
+      }
+    }
+    if (typeof msg.manualDemand === 'boolean') controls.syncDemand(msg.manualDemand);
+    if (msg.scenario && msg.world) {
+      state.world = msg.world;
+      if (msg.snapshot) ingest(msg.snapshot);
+      scenarioHud.update(msg.scenario);
+      sound.scenarioStart();
+      controls.syncDemand(false);
+      resize();
+    }
+    if (msg.action === 'reset') {
+      scenarioHud.update(null);
+      controls.syncDemand(false);
+      state.orderPickup = null;
+    }
   },
 });
 
@@ -84,16 +126,48 @@ function ingest(snapshot) {
   buffer.push(snapshot);
   metrics.update(snapshot.metrics, snapshot.tick);
 
-  const now = performance.now();
-  for (const event of snapshot.events || []) {
-    if (event.type === 'delivered' && event.cell) scene.addPulse(event.cell[0], event.cell[1], 'delivered', now + 340);
-    else if (event.type === 'picked' && event.cell) scene.addPulse(event.cell[0], event.cell[1], 'picked', now + 340);
+  if (snapshot.tick < state.seenEventTick) state.seenEventTick = -1;
+  if (snapshot.tick > state.seenEventTick) {
+    const now = performance.now();
+    for (const event of snapshot.events || []) {
+      if (event.type === 'delivered') {
+        if (event.cell) scene.addPulse(event.cell[0], event.cell[1], 'delivered', now + 340);
+        sound.delivered();
+        ticker.push(`Order #${orderId(event, snapshot)} out · ${doorLabel(event.cell)}`, 'good');
+      } else if (event.type === 'picked') {
+        if (event.cell) scene.addPulse(event.cell[0], event.cell[1], 'picked', now + 340);
+        sound.picked();
+        ticker.push(`Order #${orderId(event, snapshot)} picked`, 'good');
+      } else if (event.type === 'jam_added') {
+        sound.jam();
+        ticker.push(`Aisle blocked ${cellLabel(event.cell)}`.trim(), 'warn');
+      } else if (event.type === 'jam_cleared') {
+        ticker.push(`Aisle clear ${cellLabel(event.cell)}`.trim(), 'good');
+      } else if (event.type === 'rush') {
+        ticker.push(`Rush order #${event.task} · pick ${cellLabel(event.cell)}`.trim(), 'warn');
+      } else if (event.type === 'order') {
+        ticker.push(`Order #${event.task} placed · ${doorLabel(event.dropoff)}`, 'good');
+      } else if (event.type === 'demand') {
+        ticker.push(event.manual ? 'You dispatch — random orders paused' : 'Live demand resumed', event.manual ? 'warn' : 'good');
+      } else if (event.type === 'scenario_start') {
+        ticker.push('Black Friday — peak hour', 'warn');
+      } else if (event.type === 'scenario_over') {
+        sound.scenarioOver(event.grade);
+        toasts.show(`Black Friday over — grade ${event.grade}, score ${event.score}`, event.grade === 'F' ? 'bad' : 'good');
+        ticker.push(`Black Friday over · grade ${event.grade}`, event.grade === 'F' ? 'warn' : 'good');
+      }
+    }
+    state.seenEventTick = snapshot.tick;
   }
+  scenarioHud.update(snapshot.scenario);
 
   if (state.selectedId !== null) {
     const robot = snapshot.robots.find((r) => r.id === state.selectedId);
     inspector.update(robot ?? null);
-    if (!robot) state.selectedId = null;
+    if (!robot) {
+      state.selectedId = null;
+      if (followChip) followChip.hidden = true;
+    }
   }
 }
 
@@ -102,11 +176,14 @@ const controls = new Controls(
   {
     send: (payload) => socket.send(payload),
     toasts,
-    onJamMode: (on) => {
-      state.jamMode = on;
-      canvas.classList.toggle('is-jam-mode', on);
-      if (on) toasts.show('Jam mode on — click a cell', 'warn');
+    onTool: (tool) => {
+      state.tool = tool;
+      state.orderPickup = null;
+      canvas.classList.toggle('is-jam-mode', tool === 'jam');
+      canvas.classList.toggle('is-rush-mode', tool === 'rush');
+      canvas.classList.toggle('is-order-mode', tool === 'order');
     },
+    onSound: () => sound.toggle(),
   },
   document,
 );
@@ -152,6 +229,7 @@ function pointerPrecise(event) {
 
 function selectRobot(id) {
   state.selectedId = id;
+  if (followChip) followChip.hidden = id === null;
   if (id === null) {
     inspector.update(null);
     return;
@@ -167,7 +245,7 @@ canvas.addEventListener('mousemove', (event) => {
     cell[0] >= 0 && cell[1] >= 0 &&
     cell[0] < state.world.width && cell[1] < state.world.height;
   state.hoverCell = inside ? cell : null;
-  const hovered = inside && !state.jamMode ? robotAt(cell, pointerPrecise(event)) : null;
+  const hovered = inside && state.tool === 'none' ? robotAt(cell, pointerPrecise(event)) : null;
   state.hoverRobotId = hovered ? hovered.id : null;
   canvas.classList.toggle('is-hover-robot', !!hovered);
 });
@@ -179,9 +257,33 @@ canvas.addEventListener('click', (event) => {
   if (!state.world) return;
   if (cell[0] < 0 || cell[1] < 0 || cell[0] >= state.world.width || cell[1] >= state.world.height) return;
 
-  if (state.jamMode) {
-    // Feedback is driven by the server ack so a refused cell reads honestly.
+  if (state.tool === 'jam') {
     socket.send({ action: 'jam', x: cell[0], y: cell[1] });
+    return;
+  }
+  if (state.tool === 'rush') {
+    socket.send({ action: 'rush', x: cell[0], y: cell[1] });
+    return;
+  }
+  if (state.tool === 'order') {
+    if (!state.orderPickup) {
+      const pickup = resolveStation(cell, CELL_TYPE.PICKUP);
+      if (!pickup) {
+        toasts.show('Click a pick slot first', 'bad');
+        return;
+      }
+      state.orderPickup = pickup;
+      controls.setOrderHint('dock');
+      toasts.show('Now click the dock it should leave from', 'good');
+      return;
+    }
+    socket.send({
+      action: 'order',
+      x: state.orderPickup[0],
+      y: state.orderPickup[1],
+      dropX: cell[0],
+      dropY: cell[1],
+    });
     return;
   }
   const robot = robotAt(cell, pointerPrecise(event));
@@ -221,6 +323,11 @@ function renderFrame(now) {
 
   metrics.tween(dt);
 
+  const sample = buffer.sample(now);
+  const snapshot = buffer.latest();
+  const follow = sample?.robots.find((r) => r.id === state.selectedId);
+  camera.advance(dt, follow ? [follow.px, follow.py] : null);
+
   if (state.world) {
     ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
     ctx.clearRect(0, 0, camera.viewW, camera.viewH);
@@ -231,8 +338,6 @@ function renderFrame(now) {
     ctx.drawImage(floorCanvas, 0, 0);
     ctx.restore();
 
-    const sample = buffer.sample(now);
-    const snapshot = buffer.latest();
     if (sample && snapshot) {
       scene.draw(ctx, {
         camera,
@@ -241,13 +346,52 @@ function renderFrame(now) {
         selectedId: state.selectedId,
         hoverRobotId: state.hoverRobotId,
         hoverCell: state.hoverCell,
-        jamMode: state.jamMode,
+        jamMode: state.tool === 'jam',
+        rushMode: state.tool === 'rush',
+        orderMode: state.tool === 'order',
+        orderPickup: state.orderPickup,
+        dispatch: snapshot.dispatch || [],
+        world: state.world,
         now,
         dt,
         tick: sample.tick,
       });
     }
   }
+}
+
+function cellTypeAt(cell) {
+  const row = state.world?.cells?.[cell[1]];
+  if (row == null || cell[0] < 0 || cell[0] >= row.length) return -1;
+  return Number(row[cell[0]]);
+}
+
+function resolveStation(cell, kind) {
+  if (cellTypeAt(cell) === kind) return cell;
+  const [x, y] = cell;
+  for (const next of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+    if (cellTypeAt(next) === kind) return next;
+  }
+  return null;
+}
+
+function cellLabel(cell) {
+  return cell ? `${cell[0]}, ${cell[1]}` : '';
+}
+
+function orderId(event, snapshot) {
+  if (event.task != null) return event.task;
+  const robot = snapshot.robots?.find((r) => r.id === event.robot);
+  return robot?.task?.id ?? robot?.taskId ?? '—';
+}
+
+function doorLabel(cell) {
+  const docks = state.world?.dropoffs;
+  if (cell && docks?.length) {
+    const i = docks.findIndex((d) => d[0] === cell[0] && d[1] === cell[1]);
+    if (i >= 0) return `DOOR ${String(i + 1).padStart(2, '0')}`;
+  }
+  return cell ? `door ${cell[0]},${cell[1]}` : 'door';
 }
 
 socket.connect();

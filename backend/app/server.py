@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import SPEED_PRESETS, SimConfig, config_from_env
-from .engine import SimulationEngine
+from .engine import BLACK_FRIDAY, SimulationEngine
 
 logger = logging.getLogger("gridrunner")
 
@@ -115,6 +115,27 @@ class SimulationRunner:
             "speedPresets": SPEED_PRESETS,
             "fleetSize": len(self.engine.robots),
             "secondsPerTick": self.config.seconds_per_tick,
+            "manualDemand": self.engine.manual_demand,
+        }
+
+    def _launch_scenario(self, name: str) -> Dict[str, Any]:
+        if name != BLACK_FRIDAY["id"]:
+            return {"scenario": {"ok": False, "reason": "unknown scenario"}}
+        spec = BLACK_FRIDAY
+        self.config = SimConfig(
+            fleet_size=spec["fleet"],
+            seed=spec["seed"],
+            initial_tasks=spec["initial_tasks"],
+            jam_duration_ticks=spec["duration"] + 40,
+        )
+        self.engine = SimulationEngine(self.config)
+        payload = self.engine.begin_black_friday()
+        self.running = True
+        self._resume.set()
+        return {
+            "scenario": payload,
+            "world": self.engine.world_payload(),
+            "snapshot": self.engine.snapshot(),
         }
 
     # ------------------------------------------------------------------
@@ -207,6 +228,20 @@ class SimulationRunner:
                 extra = {"jam": {**result, "cell": list(cell)}}
             elif action == "burst":
                 self.engine.add_task_burst(int(message.get("count", 10)))
+            elif action == "rush":
+                cell = (int(message.get("x", 0)), int(message.get("y", 0)))
+                result = self.engine.add_rush_order(cell)
+                extra = {"rush": result}
+            elif action == "order":
+                pickup = (int(message.get("x", 0)), int(message.get("y", 0)))
+                dropoff = (int(message.get("dropX", 0)), int(message.get("dropY", 0)))
+                result = self.engine.place_order(pickup, dropoff)
+                extra = {"order": result}
+            elif action == "demand":
+                result = self.engine.set_manual_demand(bool(message.get("manual")))
+                extra = {"demand": result}
+            elif action == "scenario":
+                extra = self._launch_scenario(str(message.get("name", "black_friday")))
             elif action == "fleet":
                 self.engine.set_fleet_size(int(message.get("value", 12)))
             elif action == "reset":

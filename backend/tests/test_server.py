@@ -116,6 +116,52 @@ def test_jam_ack_reports_added_cleared_and_refused_cells():
             assert init["type"] == "init"
 
 
+def test_rush_and_scenario_commands_are_acknowledged():
+    with make_client() as client:
+        with client.websocket_connect("/ws") as ws:
+            ws.receive_json()
+            pickup = client.app.state.runner.engine.world.pickups[0]
+            ws.send_text(json.dumps({"action": "rush", "x": pickup[0], "y": pickup[1]}))
+            ack = _next_ack(ws)
+            assert ack["rush"]["ok"] is True
+            assert ack["rush"]["cell"] == list(pickup)
+
+            ws.send_text(json.dumps({"action": "scenario", "name": "black_friday"}))
+            sc = _next_ack(ws)
+            assert sc["scenario"]["id"] == "black_friday"
+            assert sc["world"]["width"] >= 1
+            assert sc["fleetSize"] == 32
+
+
+def test_order_and_demand_commands_are_acknowledged():
+    with make_client() as client:
+        with client.websocket_connect("/ws") as ws:
+            ws.receive_json()
+            engine = client.app.state.runner.engine
+            pickup = engine.world.pickups[0]
+            dropoff = engine.world.dropoffs[0]
+            ws.send_text(
+                json.dumps(
+                    {
+                        "action": "order",
+                        "x": pickup[0],
+                        "y": pickup[1],
+                        "dropX": dropoff[0],
+                        "dropY": dropoff[1],
+                    }
+                )
+            )
+            ack = _next_ack(ws)
+            assert ack["order"]["ok"] is True
+            assert ack["order"]["pickup"] == list(pickup)
+            assert ack["order"]["dropoff"] == list(dropoff)
+
+            ws.send_text(json.dumps({"action": "demand", "manual": True}))
+            demand = _next_ack(ws)
+            assert demand["demand"]["manual"] is True
+            assert demand["manualDemand"] is True
+
+
 def test_unknown_command_is_rejected_cleanly():
     with make_client() as client:
         with client.websocket_connect("/ws") as ws:

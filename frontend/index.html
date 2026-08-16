@@ -30,7 +30,7 @@
           </div>
           <div class="brand__text">
             <h1 class="brand__name">Grid<span>Runner</span></h1>
-            <p class="brand__tag">Warehouse fleet coordination</p>
+            <p class="brand__tag">Live warehouse operations</p>
           </div>
           <div class="brand__live" id="connection" data-state="connecting">
             <span class="dot"></span><span class="label">live</span>
@@ -39,7 +39,7 @@
 
         <section class="metrics" aria-label="Live metrics">
           <div class="metric metric--hero">
-            <span class="metric__label">Tasks / hour</span>
+            <span class="metric__label">Picks / hour</span>
             <span class="metric__value" data-metric="tasksPerHour">0</span>
             <canvas class="metric__spark" id="spark" height="34"></canvas>
           </div>
@@ -59,7 +59,7 @@
               </span>
             </div>
             <div class="metric">
-              <span class="metric__label">Delivered</span>
+              <span class="metric__label">Orders out</span>
               <span class="metric__value metric__value--sm" data-metric="tasksCompleted">0</span>
             </div>
             <div class="metric">
@@ -89,21 +89,21 @@
           <ul class="legend__list">
             <li><i class="swatch" data-status="idle"></i>Idle · parked</li>
             <li><i class="swatch" data-status="to_pickup"></i>En route to pickup</li>
-            <li><i class="swatch" data-status="carrying"></i>Carrying to dropoff</li>
+            <li><i class="swatch" data-status="carrying"></i>Carrying · cargo tote</li>
             <li><i class="swatch" data-status="rerouting"></i>Rerouting around jam</li>
           </ul>
           <h2 class="section-title">Floor</h2>
           <ul class="legend__list legend__list--floor">
             <li><i class="swatch swatch--shelf"></i>Shelving</li>
-            <li><i class="swatch swatch--pick"></i>Pick face</li>
-            <li><i class="swatch swatch--drop"></i>Dropoff station</li>
+            <li><i class="swatch swatch--pick"></i>Pick slot</li>
+            <li><i class="swatch swatch--drop"></i>Dock door</li>
             <li><i class="swatch swatch--jam"></i>Jam zone</li>
           </ul>
         </section>
 
         <footer class="rail__foot">
           <span>Space-time reservation planner</span>
-          <span class="rail__hint"><kbd>Space</kbd> pause · <kbd>J</kbd> jam · <kbd>B</kbd> burst</span>
+          <span class="rail__hint"><kbd>Space</kbd> pause · <kbd>O</kbd> order · <kbd>D</kbd> dispatch · <kbd>J</kbd> jam</span>
         </footer>
       </aside>
 
@@ -117,7 +117,29 @@
             <span class="tick-readout__value" id="tick-value">0</span>
           </div>
           <div class="jam-hint" id="jam-hint" hidden>Click a floor cell to drop a jam</div>
+          <div class="jam-hint jam-hint--rush" id="rush-hint" hidden>Click a pick slot to drop a rush order</div>
+          <div class="jam-hint jam-hint--order" id="order-hint" hidden>Click a pick slot, then a dock door</div>
+          <div class="follow-chip" id="follow-chip" hidden>Following · click floor to release</div>
         </div>
+
+        <div class="ticker" id="ticker" aria-live="polite">
+          <span class="ticker__badge">OPS</span>
+          <div class="ticker__track" id="ticker-track">
+            <div class="ticker__line">Waiting for floor events…</div>
+          </div>
+        </div>
+
+        <aside class="scenario" id="scenario-hud" hidden>
+          <div class="scenario__kicker">Scenario</div>
+          <h2 class="scenario__title" id="scenario-title">Black Friday</h2>
+          <p class="scenario__blurb" id="scenario-blurb">Peak hour. Keep the docks moving.</p>
+          <dl class="scenario__stats">
+            <div><dt>Time</dt><dd id="scenario-time">0:30</dd></div>
+            <div><dt>Delivered</dt><dd><span id="scenario-delivered">0</span>/<span id="scenario-target">100</span></dd></div>
+            <div><dt>Score</dt><dd id="scenario-score">0</dd></div>
+          </dl>
+          <div class="scenario__grade" id="scenario-grade" hidden></div>
+        </aside>
 
         <div class="dock" role="toolbar" aria-label="Simulation controls">
           <button class="dock__btn dock__btn--primary" id="btn-play" title="Play / pause (Space)">
@@ -143,6 +165,16 @@
 
           <div class="dock__sep"></div>
 
+          <button class="dock__btn dock__btn--toggle" id="btn-demand" title="You dispatch — pause random orders (D)" aria-pressed="false">
+            <svg viewBox="0 0 24 24" class="icon"><path d="M7 12a5 5 0 1 1 10 0 5 5 0 0 1-10 0z" fill="none" stroke="currentColor" stroke-width="2.1"/><path d="M12 7v5l3 1.6" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg>
+            <span class="dock__label" id="demand-label">Live demand</span>
+          </button>
+
+          <button class="dock__btn dock__btn--toggle" id="btn-order" title="Place order: pick slot then dock (O)">
+            <svg viewBox="0 0 24 24" class="icon"><path d="M5 7h9l5 5v7H5V7z" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/><path d="M9 7V5h5v2" fill="none" stroke="currentColor" stroke-width="2.1"/><path d="M8 13h5M8 16h3" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg>
+            <span class="dock__label">Order</span>
+          </button>
+
           <button class="dock__btn" id="btn-burst" title="Add 10 tasks (B)">
             <svg viewBox="0 0 24 24" class="icon"><path d="M12 4v16M4 12h16" stroke-width="2.4" stroke-linecap="round" fill="none" stroke="currentColor"/></svg>
             <span class="dock__label">Task burst</span>
@@ -150,7 +182,23 @@
 
           <button class="dock__btn dock__btn--toggle" id="btn-jam" title="Jam mode (J)">
             <svg viewBox="0 0 24 24" class="icon"><path d="M12 3.6 22 20H2z" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/><path d="M12 10v4.4" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/><circle cx="12" cy="17.4" r="1.15" fill="currentColor"/></svg>
-            <span class="dock__label">Jam mode</span>
+            <span class="dock__label">Jam</span>
+          </button>
+
+          <button class="dock__btn dock__btn--toggle" id="btn-rush" title="Rush order (R)">
+            <svg viewBox="0 0 24 24" class="icon"><path d="M4 12h10M12 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="dock__label">Rush</span>
+          </button>
+
+          <button class="dock__btn" id="btn-scenario" title="Black Friday scenario (G)">
+            <svg viewBox="0 0 24 24" class="icon"><path d="M5 19V6.8L12 4l7 2.8V19" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/><path d="M9 19v-6h6v6" fill="none" stroke="currentColor" stroke-width="2.1"/></svg>
+            <span class="dock__label">Black Friday</span>
+          </button>
+
+          <button class="dock__btn dock__btn--toggle" id="btn-sound" title="Sound (M)" aria-pressed="false">
+            <svg viewBox="0 0 24 24" class="icon icon--muted"><path d="M5 9v6h3.2L14 19V5L8.2 9H5z" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/><path d="M17 9.5 21 14.5M21 9.5 17 14.5" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg>
+            <svg viewBox="0 0 24 24" class="icon icon--live"><path d="M5 9v6h3.2L14 19V5L8.2 9H5z" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/><path d="M17 8.5a5 5 0 0 1 0 7M19.5 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg>
+            <span class="dock__label" id="sound-label">Sound</span>
           </button>
 
           <button class="dock__btn" id="btn-reset" title="Reset simulation">
@@ -180,7 +228,7 @@
             <div><span id="insp-reroutes">0</span><small>reroutes</small></div>
             <div><span id="insp-blocked">0</span><small>yields</small></div>
           </div>
-          <p class="inspector__note">Planned path highlighted on the floor.</p>
+          <p class="inspector__note">Camera follows this robot. Planned path is highlighted on the floor.</p>
         </aside>
 
         <div class="toasts" id="toasts" aria-live="polite"></div>

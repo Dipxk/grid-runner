@@ -142,6 +142,21 @@ def test_determinism_same_seed_same_history(small_config: SimConfig):
     assert a.metrics.total_completed == b.metrics.total_completed
 
 
+def test_picked_and_delivered_events_include_task_id():
+    engine = SimulationEngine(SimConfig(fleet_size=10, task_spawn_rate=0.8, seed=3, initial_tasks=12))
+    picked = delivered = None
+    for _ in range(500):
+        for event in engine.step()["events"]:
+            if event["type"] == "picked" and picked is None:
+                picked = event
+            elif event["type"] == "delivered" and delivered is None:
+                delivered = event
+        if picked and delivered:
+            break
+    assert picked is not None and picked.get("task") is not None
+    assert delivered is not None and delivered.get("task") is not None
+
+
 def test_events_are_emitted_and_drained(engine: SimulationEngine):
     engine.run(120)
     snapshot = engine.snapshot()
@@ -186,3 +201,72 @@ def test_loaded_robots_spread_across_dropoff_stations():
     used = {tuple(r.task.dropoff) for r in engine.robots if r.task is not None}
     stations = {tuple(c) for c in engine.world.dropoffs}
     assert len(used & stations) >= min(3, len(stations)), f"only {used} in use"
+
+
+def test_rush_order_lands_on_a_pick_face_and_jumps_the_queue():
+    from app.world import PICKUP
+
+    engine = SimulationEngine(SimConfig(fleet_size=10, task_spawn_rate=0.0, initial_tasks=0))
+    pickup = engine.world.pickups[0]
+    result = engine.add_rush_order(pickup)
+    assert result["ok"] and result["cell"] == list(pickup)
+    task = engine.tasks[result["task"]]
+    assert task.rush and task.pickup == pickup
+
+    refused = engine.add_rush_order(engine.world.dropoffs[0])
+    assert refused["ok"] is False
+
+    # Clicking the aisle beside a pick face still counts.
+    x, y = pickup
+    beside = next(
+        n
+        for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1))
+        if engine.world.in_bounds(n) and engine.world.cell_type(n) != PICKUP
+    )
+    beside_result = engine.add_rush_order(beside)
+    assert beside_result["ok"]
+
+
+def test_place_order_pins_pickup_and_dock():
+    engine = SimulationEngine(SimConfig(fleet_size=8, task_spawn_rate=0.0, initial_tasks=0))
+    pickup = engine.world.pickups[0]
+    dropoff = engine.world.dropoffs[0]
+    result = engine.place_order(pickup, dropoff)
+    assert result["ok"]
+    task = engine.tasks[result["task"]]
+    assert task.rush and task.pickup == pickup and task.dropoff == dropoff
+
+    refused = engine.place_order(pickup, pickup)
+    assert refused["ok"] is False
+
+
+def test_manual_demand_stops_ambient_spawn():
+    engine = SimulationEngine(
+        SimConfig(fleet_size=12, task_spawn_rate=1.0, initial_tasks=0)
+    )
+    engine.set_manual_demand(True)
+    before = engine._next_task_id
+    engine.run(8)
+    assert engine._next_task_id == before
+    engine.place_order(engine.world.pickups[0], engine.world.dropoffs[0])
+    assert engine._next_task_id == before + 1
+    engine.set_manual_demand(False)
+    engine.run(4)
+    assert engine._next_task_id > before + 1
+
+
+def test_black_friday_scenario_scores_without_collisions():
+    engine = SimulationEngine(
+        SimConfig(fleet_size=32, seed=42, initial_tasks=36, jam_duration_ticks=220)
+    )
+    sc = engine.begin_black_friday()
+    assert sc["active"] and sc["title"] == "Black Friday"
+    assert engine.world.active_jams(engine.tick), "incident jam was not seeded"
+
+    engine.run(sc["duration"] + 2)
+    done = engine.scenario
+    assert done["active"] is False
+    assert done["grade"] in ("S", "A", "B", "C", "D")
+    assert engine.metrics.collisions == 0
+    assert done["delivered"] >= 20
+    # Scoreboard freezes when the clock hits zero; the sim may keep delivering.

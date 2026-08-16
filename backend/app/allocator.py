@@ -50,7 +50,10 @@ class GreedyAllocator:
         # remaining tasks cannot win anyway (they are strictly younger), and
         # scanning all of them would make tick cost grow with backlog depth.
         candidate_count = max(self.config.max_assignments_per_tick * 4, len(idle) * 3, 24)
-        ordered = sorted(pending, key=lambda t: (t.created_tick, t.id))[:candidate_count]
+        # Rush orders jump the queue: the dispatcher clicked this pick face.
+        ordered = sorted(
+            pending, key=lambda t: (0 if t.rush else 1, t.created_tick, t.id)
+        )[:candidate_count]
         for task in ordered:
             if len(assignments) >= max_assign:
                 break
@@ -62,7 +65,8 @@ class GreedyAllocator:
                     continue
                 dist = manhattan(robot.pos, task.pickup)
                 penalty = density.get(task.pickup, 0) * 1.5
-                score = dist + penalty - age * self.config.task_age_weight
+                rush = 48.0 if task.rush else 0.0
+                score = dist + penalty - age * self.config.task_age_weight - rush
                 if score < best_score:
                     best_score = score
                     best_robot = robot

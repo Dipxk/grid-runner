@@ -1,42 +1,10 @@
 # Grid Runner
 
-A live multi-agent warehouse robot fleet simulator. Robots pick tasks off a
-shared queue, plan **conflict-free routes through a space-time reservation
-table**, reroute around operator-injected jams, and deliver to dropoff
-stations — rendered at 60 fps in the browser with interpolated motion.
+A live warehouse operations console for a robot fleet. You place orders, jam
+aisles, and run a Black Friday peak; the fleet plans **conflict-free routes
+through a space-time reservation table** and the floor stays at zero collisions.
 
-Open it, and you watch a warehouse run.
-
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│  BROWSER  (vanilla ES modules + Canvas 2D, no build step)                │
-│                                                                          │
-│   net/socket.js ──▶ state/tickBuffer.js ──▶ render/floor.js  (cached)    │
-│    reconnecting     even-timeline rebase      render/scene.js (per frame)│
-│    WebSocket        + Catmull-Rom interp   ──▶ ui/{metrics,inspector,    │
-│                     (renders ~2 ticks back)      controls,toasts}.js     │
-└───────────────────────────────┬──────────────────────────────────────────┘
-                                │  WebSocket /ws
-              tick snapshots ▼  │  ▲ commands (pause/speed/jam/burst/fleet)
-┌───────────────────────────────┴──────────────────────────────────────────┐
-│  FastAPI + uvicorn (asyncio)                                             │
-│                                                                          │
-│   SimulationRunner ── drift-corrected tick clock                         │
-│      └─ ClientChannel (bounded queue per client, drops stale snapshots)  │
-│                                                                          │
-│   SimulationEngine.step()                                                │
-│      1. expire jams        → world.py    (procedural floor plan)         │
-│      2. spawn tasks        → models.py                                   │
-│      3. allocate           → allocator.py (nearest-idle + age + density) │
-│      4. plan               → pathfinding.py (windowed space-time A*)     │
-│                              reservation.py (vertex + edge reservations) │
-│      5. execute            → execution guard (independent safety layer)  │
-│      6. verify             → runtime collision assertion (stays 0)       │
-│      7. metrics            → metrics.py (rolling, simulated-time based)  │
-└──────────────────────────────────────────────────────────────────────────┘
-```
-
----
+Open it, and you run a shift — not a pathfinding demo.
 
 ## Quick start
 
@@ -51,15 +19,75 @@ Or with Docker:
 docker compose up --build   # http://localhost:8000
 ```
 
-Then: click a robot to see its plan, hit **Jam mode** and click an aisle to
-block it, drag the **Fleet** slider to watch tick compute climb, and press
-**Space** to pause.
+Hard-refresh the tab if you already had it open (`Cmd+Shift+R`).
+
+### What to click
+
+1. **You dispatch (D)** — pause random demand. Robots finish in-flight work, then wait.
+2. **Order (O)** — click a **pick slot**, then a **dock door**. That tote jumps the queue; the pick LED and dock lamp light immediately.
+3. **Jam (J)** — click an aisle. The fleet replans around it.
+4. **Black Friday (G)** — timed peak: 32 robots, seeded aisle jams, a score.
+5. Click a robot to follow its path. **Space** pauses.
+
+Rush (R) still drops a high-priority pick with a random door. Task burst (B) dumps extra random work. Live demand turns the firehose back on.
+
+Dock lamps: **green** = idle, **red** = a robot is carrying to that door. Orange stripes are jams, not dock errors.
 
 | Command | What it does |
 | --- | --- |
 | `make test` | Full suite, including 12 randomised collision scenarios |
 | `make test-fast` | Same minus the slow randomised sweep |
 | `make bench` | Load test → `benchmarks/results.{json,md}` |
+
+---
+
+## What you're looking at
+
+The canvas is a 2.5D warehouse on the existing 2D sim (no Three.js rewrite).
+Hit-testing stays grid-based: rack extrusion never leaves a shelf cell, so
+aisles stay clickable.
+
+- **Racks** — extruded bays with carton inventory and aisle tape (`AISLE A`)
+- **Pick slots** — put-to-light bezels; the LED pulses when a robot is inbound
+- **Dock doors** — `DOOR 01` frames with occupancy lamps
+- **OPS ticker** — picks, dock-outs, jams, rush/authored orders
+
+The left rail is ops copy (picks / hour, orders out), not algorithm debug.
+
+---
+
+## How it is put together
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  BROWSER  (vanilla ES modules + Canvas 2D, no build step)                │
+│                                                                          │
+│   net/socket.js ──▶ state/tickBuffer.js ──▶ render/floor.js  (cached)    │
+│    reconnecting     even-timeline rebase      render/scene.js (per frame)│
+│    WebSocket        + Catmull-Rom interp   ──▶ ui/{metrics,inspector,    │
+│                     (renders ~2 ticks back)      controls,ticker,        │
+│                                                  scenario}.js            │
+└───────────────────────────────┬──────────────────────────────────────────┘
+                                │  WebSocket /ws
+     tick snapshots ▼           │  ▲ pause / speed / jam / order / demand /
+                                │    rush / burst / fleet / scenario
+┌───────────────────────────────┴──────────────────────────────────────────┐
+│  FastAPI + uvicorn (asyncio)                                             │
+│                                                                          │
+│   SimulationRunner ── drift-corrected tick clock                         │
+│      └─ ClientChannel (bounded queue per client, drops stale snapshots)  │
+│                                                                          │
+│   SimulationEngine.step()                                                │
+│      1. expire jams        → world.py    (procedural floor plan)         │
+│      2. spawn tasks        → models.py   (off in "You dispatch")         │
+│      3. allocate           → allocator.py (nearest-idle + age + density) │
+│      4. plan               → pathfinding.py (windowed space-time A*)     │
+│                              reservation.py (vertex + edge reservations) │
+│      5. execute            → execution guard (independent safety layer)  │
+│      6. verify             → runtime collision assertion (stays 0)       │
+│      7. metrics            → metrics.py (rolling, simulated-time based)  │
+└──────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -207,6 +235,8 @@ Committing early is what created the funnel that deadlocked dense fleets.
 size, but stops while the backlog exceeds a quarter of the fleet. Without the
 ceiling a small surplus compounds into a queue that only inflates avg task time
 with waiting, not driving. Operator bursts bypass it — a spike should be felt.
+**You dispatch** turns ambient spawn off entirely so the floor only moves on
+orders you place.
 
 **Snapshots, not deltas.** A 20-robot tick payload is a few KB. Deltas would buy
 little and cost a lot of bug surface — and any dropped frame self-heals.
@@ -221,6 +251,10 @@ the whole simulation.)
 `render/` and `ui/`. The demo is one command, the Docker image is small, and the
 code is still modular — a bundler would add tooling without improving the
 result at this size.
+
+**Stay 2.5D on Canvas, not a Three.js rewrite.** Racks are extruded inside their
+own cells so the interpolator, hit-testing, and reservation grid stay the same
+code path. Full 3D would throw away the part that already looks expensive.
 
 ---
 
@@ -239,7 +273,7 @@ backend/
     engine.py        tick pipeline, execution guard, runtime verifier
     server.py        FastAPI, WebSocket hub, static hosting
   scripts/benchmark.py
-  tests/             48 tests
+  tests/
 frontend/
   index.html  styles.css
   src/
@@ -247,7 +281,8 @@ frontend/
     net/socket.js    reconnecting WebSocket
     state/tickBuffer.js  interpolation  ← animation core
     render/{camera,floor,scene}.js
-    ui/{metrics,inspector,controls,toasts}.js
+    ui/{metrics,inspector,controls,toasts,ticker,scenario}.js
+    audio/sound.js
 benchmarks/results.{json,md}
 ```
 
@@ -255,7 +290,7 @@ benchmarks/results.{json,md}
 
 ## Resume bullet (measured, not estimated)
 
-> Built **Grid Runner**, a multi-agent warehouse fleet simulator in Python
+> Built **Grid Runner**, a warehouse fleet ops console in Python
 > (FastAPI/asyncio) with a 60 fps Canvas frontend: space-time reservation-table
 > planning (vertex + edge reservations) makes robot plans and executed moves
 > conflict-free by construction, with **zero collisions across randomised test
@@ -264,14 +299,16 @@ benchmarks/results.{json,md}
 > budget**, and diagnosed a dropoff-station deadlock from benchmark data —
 > congestion-aware bay selection plus a step-aside recovery move took a 75-robot
 > fleet from **197 to 6,463 tasks/hour** with collisions still at zero.
+> Operators can pause random demand and place pick→dock orders on the live floor.
 
 ---
 
-## Next steps
+## Next
 
-* **Allocation:** replace greedy matching with Hungarian/auction assignment and
-  measure the throughput delta on the same benchmark.
-* **Congestion:** guard stops start climbing past 75 robots. One-way aisles and
-  contention-aware path costs are the next lever, measurable on the same sweep.
-* **Scale-out:** shard the floor across processes with a boundary reservation
-  protocol; deploy to AWS behind a WebSocket-aware load balancer.
+The floor is a showable demo. The systems claim that is still missing:
+
+* **Dumb twin** — split-screen, same floor / tasks / jams. Left = reservation
+  planner (0 collisions). Right = independent A*. That is the comparison a
+  sharp interviewer will ask for.
+
+Not next: Three.js, paid hosting, more scenarios, accounts.
