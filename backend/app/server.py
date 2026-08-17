@@ -271,6 +271,14 @@ def create_app(config: Optional[SimConfig] = None) -> FastAPI:
     app = FastAPI(title="Grid Runner", version="1.0.0", lifespan=lifespan)
     app.state.runner = runner
 
+    @app.middleware("http")
+    async def allow_embed(request, call_next):
+        # Let the portfolio (and any other site) iframe the live demo.
+        response = await call_next(request)
+        response.headers["Content-Security-Policy"] = "frame-ancestors *"
+        response.headers.pop("X-Frame-Options", None)
+        return response
+
     @app.get("/api/health")
     async def health() -> JSONResponse:
         return JSONResponse(

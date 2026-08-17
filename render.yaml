@@ -1,0 +1,14 @@
+# Free Render Blueprint for the live Grid Runner demo.
+# Dashboard → New → Blueprint → this repo, or:
+#   https://dashboard.render.com/select-repo?type=blueprint
+services:
+  - type: web
+    name: grid-runner
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: GRIDRUNNER_FLEET_SIZE
+        value: "18"
+      - key: GRIDRUNNER_TICKS_PER_SECOND
+        value: "6"

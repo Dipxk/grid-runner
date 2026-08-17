@@ -16,8 +16,11 @@ COPY frontend/ frontend/
 
 EXPOSE 8000
 
+# Render injects $PORT; local/Fly keep 8000.
+ENV PORT=8000
+
 HEALTHCHECK --interval=20s --timeout=3s --start-period=5s \
-    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health').status==200 else 1)"
+    CMD python -c "import os,urllib.request,sys; p=os.environ.get('PORT','8000'); sys.exit(0 if urllib.request.urlopen(f'http://127.0.0.1:{p}/api/health').status==200 else 1)"
 
 WORKDIR /app/backend
-CMD ["uvicorn", "app.server:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD uvicorn app.server:app --host 0.0.0.0 --port ${PORT}

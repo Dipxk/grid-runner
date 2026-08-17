@@ -1,0 +1,37 @@
+# Fly.io deploy config. One machine serves the FastAPI app + Canvas frontend.
+# WebSockets work on the HTTP service without extra setup.
+#
+#   fly deploy
+
+app = "grid-runner-dipxk"
+primary_region = "iad"
+
+[build]
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 50
+    soft_limit = 25
+
+[[http_service.checks]]
+  interval = "20s"
+  timeout = "4s"
+  grace_period = "15s"
+  method = "GET"
+  path = "/api/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[env]
+  GRIDRUNNER_FLEET_SIZE = "18"
+  GRIDRUNNER_TICKS_PER_SECOND = "6"
