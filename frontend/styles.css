@@ -402,7 +402,8 @@ kbd {
 .pov-hint {
   position: absolute;
   left: 50%;
-  bottom: calc(var(--ticker-h) + 18px);
+  top: 22px;
+  bottom: auto;
   transform: translateX(-50%);
   z-index: 4;
   display: flex;
@@ -468,7 +469,7 @@ kbd {
 }
 
 @keyframes pov-in {
-  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
   to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
