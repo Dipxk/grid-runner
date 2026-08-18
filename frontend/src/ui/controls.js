@@ -38,6 +38,8 @@ export class Controls {
     this.rushHint = root.querySelector('#rush-hint');
     this.orderHint = root.querySelector('#order-hint');
     this.app = root.querySelector('#app');
+    this.dock = root.querySelector('#dock');
+    this.dockCollapse = root.querySelector('#btn-dock-collapse');
     this.manualDemand = false;
 
     this.#wire();
@@ -92,6 +94,9 @@ export class Controls {
       this.toasts.show('Simulation reset');
     });
 
+    this.dockCollapse?.addEventListener('click', () => this.toggleDock());
+    this.setDockCollapsed(localStorage.getItem('robofleet.dockCollapsed') === '1');
+
     let fleetTimer = null;
     this.fleet?.addEventListener('input', () => {
       this.fleetValue.textContent = this.fleet.value;
@@ -123,6 +128,8 @@ export class Controls {
         this.scenarioBtn?.click();
       } else if (event.key === 'm' || event.key === 'M') {
         this.soundBtn?.click();
+      } else if (event.key === 'h' || event.key === 'H') {
+        this.toggleDock();
       }
     });
   }
@@ -171,6 +178,22 @@ export class Controls {
     this.demandBtn?.classList.toggle('is-active', this.manualDemand);
     this.demandBtn?.setAttribute('aria-pressed', this.manualDemand ? 'true' : 'false');
     if (this.demandLabel) this.demandLabel.textContent = this.manualDemand ? 'You dispatch' : 'Live demand';
+  }
+
+  toggleDock() {
+    this.setDockCollapsed(!this.dock?.classList.contains('is-collapsed'));
+  }
+
+  setDockCollapsed(collapsed) {
+    const on = !!collapsed;
+    this.dock?.classList.toggle('is-collapsed', on);
+    this.dockCollapse?.setAttribute('aria-expanded', on ? 'false' : 'true');
+    this.dockCollapse?.setAttribute('title', on ? 'Show controls (H)' : 'Hide controls (H)');
+    try {
+      localStorage.setItem('robofleet.dockCollapsed', on ? '1' : '0');
+    } catch {
+      /* ignore quota / private mode */
+    }
   }
 
   togglePlay() {

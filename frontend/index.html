@@ -132,7 +132,7 @@
 
         <footer class="rail__foot">
           <span>Space-time reservation planner</span>
-          <span class="rail__hint"><kbd>Space</kbd> pause · <kbd>O</kbd> order · <kbd>D</kbd> dispatch · <kbd>J</kbd> jam</span>
+          <span class="rail__hint"><kbd>Space</kbd> pause · <kbd>H</kbd> hide controls · <kbd>O</kbd> order · <kbd>J</kbd> jam</span>
         </footer>
       </aside>
 
@@ -179,7 +179,12 @@
           <div class="scenario__grade" id="scenario-grade" hidden></div>
         </aside>
 
-        <div class="dock" role="toolbar" aria-label="Simulation controls">
+        <div class="dock" id="dock" role="toolbar" aria-label="Simulation controls">
+          <button class="dock__collapse" id="btn-dock-collapse" type="button" title="Hide controls (H)" aria-expanded="true" aria-controls="dock">
+            <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="dock__collapse-label">Controls</span>
+          </button>
+
           <button class="dock__btn dock__btn--primary" id="btn-play" title="Play / pause (Space)">
             <svg viewBox="0 0 24 24" class="icon icon--pause"><rect x="7" y="5" width="3.6" height="14" rx="1.2"/><rect x="13.4" y="5" width="3.6" height="14" rx="1.2"/></svg>
             <svg viewBox="0 0 24 24" class="icon icon--play"><path d="M8 5.5v13l11-6.5z"/></svg>

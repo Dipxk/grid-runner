@@ -615,12 +615,58 @@ kbd {
   padding: 9px 12px;
   border-radius: 14px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.93);
-  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(12px);
   box-shadow: var(--shadow);
   max-width: calc(100% - 36px);
   flex-wrap: wrap;
   justify-content: center;
+  z-index: 5;
+  transition: padding 180ms var(--ease), background 180ms var(--ease);
+}
+.dock.is-collapsed {
+  padding: 5px 8px 5px 6px;
+  gap: 0;
+  background: rgba(14, 26, 31, 0.78);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #edf4f3;
+}
+.dock.is-collapsed > :not(.dock__collapse) {
+  display: none;
+}
+
+.dock__collapse {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: rgba(14, 26, 31, 0.06);
+  color: var(--ink-500);
+  width: 28px;
+  height: 28px;
+  justify-content: center;
+  border-radius: 8px;
+  cursor: pointer;
+  flex: none;
+  padding: 0;
+}
+.dock__collapse:hover { background: rgba(14, 26, 31, 0.12); color: var(--ink-800); }
+.dock__collapse .icon { width: 16px; height: 16px; }
+.dock__collapse-label { display: none; }
+.dock.is-collapsed .dock__collapse {
+  width: auto;
+  padding: 4px 10px 4px 6px;
+  background: transparent;
+  color: #edf4f3;
+}
+.dock.is-collapsed .dock__collapse-label {
+  display: inline;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+}
+.dock.is-collapsed .dock__collapse .icon {
+  transform: rotate(180deg);
 }
 
 .dock__btn {
