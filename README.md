@@ -170,55 +170,83 @@ recorded as `task_reassigned` events when an offline robot had an unpicked assig
 
 ## Resilience testing
 
-The **Resilience Test** scenario (32 robots, seeded jams, scheduled faults on
-R07/R14/R19) grades on zero collisions, recovery success, throughput maintained,
-and mean recovery latency. Run it from the dock **Resilience** button or
-`engine.begin_resilience_test()`.
+The **Resilience Test** scenario (32 robots, seeded jams) runs a deterministic
+inject **and clear** schedule so each fault completes a real recovery cycle:
+
+| Tick | Robot | Action |
+| ---: | ---: | --- |
+| 40 | R07 | offline |
+| 58 | R07 | restore |
+| 70 | R14 | slow (stride 3) |
+| 90 | R14 | clear |
+| 100 | R19 | planner failure |
+| 110 | R19 | recover |
+
+State path: `NORMAL → FAULT_DETECTED → SAFE_HOLD → RECOVERY → REPLANNING → NORMAL`
+
+The scenario grades on zero collisions, recovery success rate, throughput, mean
+recovery latency, task reassignments, and guard interventions.
 
 ---
 
 ## Planner benchmark
 
-`make bench-planners` runs identical seeded scenarios under:
+`make bench-planners` runs identical seeded scenarios under shared allocator,
+horizon, replan triggers, demand, execution guard, warmup, and measurement window.
 
-* **WHCA*** — vertex + edge space-time reservations, replanning, execution guard
-* **Baseline** — independent spatial A* without future reservations; guard still active
+| Planner | Fleet | Tasks/h | Guard stops | Collisions |
+| --- | ---: | ---: | ---: | ---: |
+| WHCA* | 16 | 1,422 | 0 | 0 |
+| Baseline | 16 | 54 | 8,329 | 0 |
+| WHCA* | 32 | 2,730 | 0 | 0 |
+| Baseline | 32 | 102 | 16,606 | 0 |
 
-Results: `benchmarks/planner_comparison.{json,md}`. Re-run after changes; numbers
-are measured, not estimated.
+Baseline uses one-step spatial A* without future reservations; the execution guard
+still prevents collisions. Full metrics: `benchmarks/planner_comparison.md`.
 
 ---
 
 ## CI / SDLC
 
-* **Fast CI** — lint-ready pytest via `make test-fast` on every push/PR
-* **Nightly** — randomised collision scenarios, dense fleet, fault/resilience tests
-* **Deterministic seeds** — fault and collision tests replay identically
+Workflows in `.github/workflows/`:
+
+* **`ci.yml`** — push/PR: reservation, pathfinding, integration, server, fault, fast suite
+* **`nightly-resilience.yml`** — nightly + manual: randomized collisions, dense fleet, fault storm, planner benchmark artifacts
 
 ---
 
 ## Optional ROS 2 integration
 
-Documented adapter architecture in `integrations/ros2/README.md`. The core
-simulator runs without ROS installed. Topic/action mapping is specified; a
-minimal bridge is optional when ROS 2 is present in the environment.
+Bridge package: `integrations/ros2/grid_runner_bridge/` (source implemented).
+
+Publishes `/grid_runner/fleet_state`, `/grid_runner/events`, `/grid_runner/robot/{id}/state`.
+Commands via `/grid_runner/command` (`std_msgs/String` JSON).
+
+**Not runtime-verified in CI** — requires local ROS 2 + `rclpy`. See `integrations/ros2/README.md`.
 
 ---
 
-## Optional AWS telemetry
+## Optional AWS telemetry & experiment store
 
-`backend/app/telemetry.py` provides a `TelemetrySink` abstraction wired into the
-live server via `TelemetryBridge`. Local modes work without AWS:
+`TelemetrySink` + `TelemetryBridge` wire metrics/events to JSON, console, or AWS IoT Core.
+`ExperimentStore` persists benchmark summaries to JSON or DynamoDB (`GRIDRUNNER_DYNAMODB_TABLE`).
 
-```bash
-GRIDRUNNER_TELEMETRY=json    # default — writes benchmarks/telemetry.jsonl
-GRIDRUNNER_TELEMETRY=console
-GRIDRUNNER_TELEMETRY=aws     # MQTT → IoT Core (needs certs + awsiotsdk)
-```
+**AWS IoT and DynamoDB were not live-tested in this environment** — code paths fall back cleanly without credentials.
 
-`/api/health` reports the active sink. Full AWS setup (IoT thing, policy, Lambda →
-DynamoDB/S3) is documented in `integrations/aws/README.md`. Planning stays local;
-AWS is observability only.
+---
+
+## Implementation status
+
+| Feature | Status |
+| --- | --- |
+| Space-time A* + reservations | Fully implemented |
+| Fault injection + recovery | Fully implemented |
+| Resilience scenario (inject + clear) | Fully implemented |
+| CI workflows | In repository |
+| Planner comparison benchmark | Measured |
+| AWS IoT telemetry sink | Implemented, optional |
+| ROS 2 bridge | Source implemented, not CI-verified |
+| DynamoDB experiment store | Implemented, optional |
 
 ---
 
@@ -404,11 +432,13 @@ backend/
     engine.py        tick pipeline, execution guard, runtime verifier
     faults.py        fault injection, recovery, task reassignment
     telemetry.py     optional TelemetrySink implementations
+    experiments.py   optional ExperimentStore (JSON / DynamoDB)
     server.py        FastAPI, WebSocket hub, static hosting
   scripts/{benchmark,planner_comparison}.py
-  tests/test_faults.py
+  tests/test_{faults,telemetry,experiments,planner_comparison}.py
 integrations/{aws,ros2}/README.md
-benchmarks/{results,planner_comparison}.{json,md}
+integrations/ros2/grid_runner_bridge/   optional ROS 2 bridge package
+benchmarks/{results,planner_comparison,experiments}.{json,md}
 frontend/
   index.html  styles.css
   src/

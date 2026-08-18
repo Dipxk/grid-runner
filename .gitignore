@@ -8,3 +8,4 @@ __pycache__/
 *.log
 node_modules/
 benchmarks/telemetry.jsonl
+benchmarks/experiments.json

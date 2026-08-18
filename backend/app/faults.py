@@ -65,10 +65,12 @@ class RobotFaultRecord:
     comm_pending_dest: Optional[tuple] = None
     comm_pending_at: Optional[int] = None
 
-    def to_payload(self, tick: int) -> Dict[str, Any]:
-        last_recovery_ms: Optional[float] = None
+    def to_payload(self, tick: int, seconds_per_tick: float = 1.0) -> Dict[str, Any]:
+        last_recovery_seconds: Optional[float] = None
         if self.recovery_started_tick is not None and self.recovery_completed_tick is not None:
-            last_recovery_ms = (self.recovery_completed_tick - self.recovery_started_tick) * 1000.0 / 6.0
+            last_recovery_seconds = (
+                self.recovery_completed_tick - self.recovery_started_tick
+            ) * seconds_per_tick
         return {
             "health": self.health.value,
             "faultState": self.fault_state.value,
@@ -78,7 +80,7 @@ class RobotFaultRecord:
             "lastFaultTick": self.last_fault_tick,
             "recoveryStartedTick": self.recovery_started_tick,
             "recoveryCompletedTick": self.recovery_completed_tick,
-            "lastRecoverySeconds": round(last_recovery_ms / 1000.0, 2) if last_recovery_ms else None,
+            "lastRecoverySeconds": round(last_recovery_seconds, 2) if last_recovery_seconds is not None else None,
             "plannerFailures": self.planner_failures,
         }
 
@@ -187,6 +189,8 @@ class FaultManager:
             return {"ok": False, "reason": "unknown robot"}
         rec = self._record(robot_id)
         if rec.active is None:
+            if rec.fault_state in (FaultState.RECOVERY, FaultState.REPLANNING):
+                return {"ok": True, "action": "recovering", "robot": robot_id}
             return {"ok": True, "action": "none", "robot": robot_id}
 
         tick = self.engine.tick
@@ -196,8 +200,11 @@ class FaultManager:
         rec.health = RobotHealth.DEGRADED
         rec.planner_hold_until = 0
         rec.slow_stride = 1
+        rec.slow_tick_counter = 0
         rec.comm_delay_ticks = 0
         rec.comm_pending_dest = None
+        rec.comm_pending_at = None
+        robot.operational = True
         self.engine.events.append(
             {"type": "recovery_started", "robot": robot_id, "tick": tick}
         )
@@ -221,6 +228,10 @@ class FaultManager:
                     robot.invalidate_plan()
 
     def _complete_recovery(self, robot: Robot, rec: RobotFaultRecord, now: int) -> None:
+        if not robot.operational or not robot.plan or len(robot.plan) <= 1:
+            return
+        if rec.fault_state != FaultState.REPLANNING:
+            return
         rec.fault_state = FaultState.NORMAL
         rec.health = RobotHealth.HEALTHY
         rec.recovery_count += 1

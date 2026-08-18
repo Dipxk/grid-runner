@@ -74,9 +74,12 @@ RESILIENCE_TEST = {
     "seed": 77,
     "initial_tasks": 30,
     "fault_schedule": [
-        {"tick": 40, "robot": 7, "type": "robot_offline"},
-        {"tick": 70, "robot": 14, "type": "slow_robot", "params": {"stride": 3}},
-        {"tick": 100, "robot": 19, "type": "planner_failure", "params": {"hold_ticks": 10}},
+        {"tick": 40, "robot": 7, "action": "inject", "type": "robot_offline"},
+        {"tick": 58, "robot": 7, "action": "clear"},
+        {"tick": 70, "robot": 14, "action": "inject", "type": "slow_robot", "params": {"stride": 3}},
+        {"tick": 90, "robot": 14, "action": "clear"},
+        {"tick": 100, "robot": 19, "action": "inject", "type": "planner_failure", "params": {"hold_ticks": 8}},
+        {"tick": 110, "robot": 19, "action": "clear"},
     ],
 }
 
@@ -503,6 +506,13 @@ class SimulationEngine:
             "score": 0,
             "remaining": spec["duration"],
             "faultSchedule": list(spec.get("fault_schedule", [])),
+            "startFaultsInjected": self.faults.faults_injected,
+            "startRecoveries": self.faults.successful_recoveries,
+            "startTaskReassignments": self.faults.task_reassignments,
+            "startGuardInterventions": self.metrics.guard_interventions,
+            "scheduledFaults": sum(
+                1 for item in spec.get("fault_schedule", []) if item.get("action", "inject") == "inject"
+            ),
         }
         self.events.append({"type": "scenario_start", "id": spec["id"], "tick": self.tick})
         return self.scenario_payload()
@@ -534,14 +544,21 @@ class SimulationEngine:
         schedule = sc.get("faultSchedule") or []
         remaining: List[Dict[str, Any]] = []
         for item in schedule:
-            if int(item.get("tick", -1)) == now:
+            tick_at = int(item.get("tick", -1))
+            if tick_at != now:
+                if tick_at > now:
+                    remaining.append(item)
+                continue
+            robot_id = int(item["robot"])
+            action = str(item.get("action", "inject"))
+            if action == "clear":
+                self.clear_fault(robot_id)
+            else:
                 self.inject_fault(
-                    int(item["robot"]),
+                    robot_id,
                     str(item["type"]),
                     dict(item.get("params") or {}),
                 )
-            elif int(item.get("tick", -1)) > now:
-                remaining.append(item)
         sc["faultSchedule"] = remaining
 
     def _tick_scenario(self) -> None:
@@ -554,12 +571,19 @@ class SimulationEngine:
         sc["remaining"] = max(0, int(sc["duration"]) - elapsed)
         sc["score"] = delivered * 12 + int(sc.get("rushOrders", 0)) * 8
         if sc["id"] == RESILIENCE_TEST["id"]:
-            sc["faultsInjected"] = self.faults.faults_injected
-            sc["faultsRecovered"] = self.faults.successful_recoveries
-            sc["taskReassignments"] = self.faults.task_reassignments
+            sc["faultsInjected"] = self.faults.faults_injected - int(sc.get("startFaultsInjected", 0))
+            sc["faultsRecovered"] = self.faults.successful_recoveries - int(sc.get("startRecoveries", 0))
+            sc["taskReassignments"] = self.faults.task_reassignments - int(
+                sc.get("startTaskReassignments", 0)
+            )
+            sc["guardInterventions"] = self.metrics.guard_interventions - int(
+                sc.get("startGuardInterventions", 0)
+            )
             sc["meanRecoverySeconds"] = round(
                 self.faults.mean_recovery_ticks() * self.config.seconds_per_tick, 2
             )
+            scheduled = max(1, int(sc.get("scheduledFaults", 1)))
+            sc["recoverySuccessRate"] = round(sc["faultsRecovered"] / scheduled, 3)
             sc["score"] = (
                 delivered * 10
                 + sc["faultsRecovered"] * 15
@@ -742,6 +766,8 @@ class SimulationEngine:
                 robot.plan_partial = True
                 continue
             if self.config.planner_mode == "baseline":
+                if not self._plan_needs_refresh(robot, now):
+                    continue
                 self._plan_baseline(robot, now)
                 continue
             if not self._plan_needs_refresh(robot, now):
@@ -797,28 +823,23 @@ class SimulationEngine:
             robot.plan_partial = not result.complete
 
     def _plan_baseline(self, robot: Robot, now: int) -> None:
-        """Independent spatial A* — no space-time reservations (benchmark only)."""
+        """Spatial A* one-step lookahead — no future space-time reservations."""
         goal = robot.goal or robot.pos
-        path: List[Cell] = [robot.pos]
-        cur = robot.pos
-        for _ in range(self.config.horizon):
-            if cur == goal:
-                path.append(cur)
-                continue
-            segment = static_path(self.world, cur, goal, now + len(path))
-            if not segment or len(segment) < 2:
-                break
-            cur = segment[1]
-            if not self.world.is_passable(cur, now + len(path)):
-                break
-            path.append(cur)
+        segment = static_path(self.world, robot.pos, goal, now)
+        if segment and len(segment) >= 2 and self.world.is_passable(segment[1], now + 1):
+            next_cell = segment[1]
+        else:
+            next_cell = robot.pos
+            if goal != robot.pos:
+                self.metrics.failed_plans += 1
+        path = [robot.pos, next_cell]
         while len(path) < self.config.horizon + 1:
             path.append(path[-1])
         path = path[: self.config.horizon + 1]
         self.table.release_agent(robot.id)
         robot.plan = path
         robot.plan_t0 = now
-        robot.plan_partial = path[-1] != goal
+        robot.plan_partial = next_cell != goal
         robot.replans += 1
         self.metrics.replans += 1
 
@@ -1051,7 +1072,9 @@ class SimulationEngine:
         for robot in self.robots:
             payload = robot.to_payload()
             payload["status"] = self.display_status(robot)
-            payload["fault"] = self.faults._record(robot.id).to_payload(self.tick)
+            payload["fault"] = self.faults._record(robot.id).to_payload(
+                self.tick, self.config.seconds_per_tick
+            )
             if robot.task is not None:
                 payload["task"] = {
                     "id": robot.task.id,
