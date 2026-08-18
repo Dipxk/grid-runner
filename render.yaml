@@ -6,6 +6,8 @@ services:
     name: grid-runner
     runtime: docker
     plan: free
+    branch: main
+    autoDeployTrigger: commit
     healthCheckPath: /api/health
     envVars:
       - key: GRIDRUNNER_FLEET_SIZE
