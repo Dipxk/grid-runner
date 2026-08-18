@@ -1,0 +1,45 @@
+name: Nightly resilience
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  resilience:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements-dev.txt
+
+      - name: Randomized collision suite
+        run: cd backend && python -m pytest tests/test_no_collisions.py -q
+
+      - name: Dense fleet regression
+        run: cd backend && python -m pytest tests/test_engine_integration.py::test_dense_fleet_keeps_delivering_and_never_deadlocks -q
+
+      - name: Fault storm and resilience scenario
+        run: cd backend && python -m pytest tests/test_faults.py -q
+
+      - name: Planner comparison benchmark
+        run: |
+          cd backend && python scripts/planner_comparison.py \
+            --fleets 16 32 --ticks 400 --warmup 40 \
+            --json ../benchmarks/planner_comparison.json \
+            --markdown ../benchmarks/planner_comparison.md
+
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-benchmarks
+          path: |
+            benchmarks/planner_comparison.json
+            benchmarks/planner_comparison.md
