@@ -39,4 +39,6 @@ jobs:
         run: cd backend && python -m pytest tests/test_faults.py tests/test_telemetry.py tests/test_experiments.py -q
 
       - name: Fast suite (excludes slow randomized collision sweep)
-        run: make test-fast
+        run: |
+          cd backend && python -m pytest -q \
+            --deselect tests/test_no_collisions.py::test_zero_collisions_over_randomised_runs
