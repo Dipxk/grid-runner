@@ -52,6 +52,7 @@ const sound = new SoundBed();
 const ticker = new OpsTicker(document);
 const followChip = document.getElementById('follow-chip');
 const povHint = document.getElementById('pov-hint');
+const povHintDismiss = document.getElementById('pov-hint-dismiss');
 
 const state = {
   world: null,
@@ -262,13 +263,22 @@ function pointerPrecise(event) {
   ];
 }
 
+function hidePovHint() {
+  if (povHint) povHint.hidden = true;
+  state.povHintDismissed = true;
+}
+
+if (povHintDismiss) {
+  povHintDismiss.addEventListener('click', (event) => {
+    event.stopPropagation();
+    hidePovHint();
+  });
+}
+
 function selectRobot(id) {
   state.selectedId = id;
   if (followChip) followChip.hidden = id === null;
-  if (id !== null && povHint) {
-    povHint.hidden = true;
-    state.povHintDismissed = true;
-  }
+  if (id !== null) hidePovHint();
   if (id === null) {
     inspector.update(null);
     if (povHint && !state.povHintDismissed) povHint.hidden = false;

@@ -149,7 +149,15 @@
           <div class="jam-hint jam-hint--rush" id="rush-hint" hidden>Click a pick slot to drop a rush order</div>
           <div class="jam-hint jam-hint--order" id="order-hint" hidden>Click a pick slot, then a dock door</div>
           <div class="follow-chip" id="follow-chip" hidden>Following · click floor to release</div>
-          <div class="pov-hint" id="pov-hint">Click any robot to follow its POV</div>
+        </div>
+
+        <div class="pov-hint" id="pov-hint">
+          <span class="pov-hint__mark" aria-hidden="true"></span>
+          <span class="pov-hint__copy">
+            <strong>Follow a robot</strong>
+            <span>Click any unit for POV</span>
+          </span>
+          <button type="button" class="pov-hint__close" id="pov-hint-dismiss" aria-label="Dismiss hint">×</button>
         </div>
 
         <div class="ticker" id="ticker" aria-live="polite">

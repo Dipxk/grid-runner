@@ -400,22 +400,76 @@ kbd {
 .follow-chip[hidden] { display: none; }
 
 .pov-hint {
-  margin-left: auto;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.03em;
-  color: var(--ink-500);
-  padding: 5px 12px;
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--ticker-h) + 18px);
+  transform: translateX(-50%);
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(92%, 320px);
+  padding: 8px 8px 8px 10px;
   border-radius: 999px;
-  background: rgba(18, 133, 122, 0.1);
-  border: 1px dashed rgba(18, 133, 122, 0.45);
-  animation: pov-pulse 2.4s ease-in-out infinite;
+  background: rgba(14, 26, 31, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 12px 32px -12px rgba(14, 26, 31, 0.55);
+  backdrop-filter: blur(12px);
+  color: #edf4f3;
+  pointer-events: auto;
+  animation: pov-in 420ms var(--ease);
 }
 .pov-hint[hidden] { display: none; }
+.pov-hint__mark {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 46%, #1d9c8f 0 5px, transparent 6px),
+    linear-gradient(135deg, #1a2c32, #0f1d22);
+  box-shadow: inset 0 0 0 1.5px rgba(29, 156, 143, 0.55);
+}
+.pov-hint__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  line-height: 1.15;
+}
+.pov-hint__copy strong {
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.pov-hint__copy span {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: rgba(237, 244, 243, 0.62);
+  text-transform: uppercase;
+}
+.pov-hint__close {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(237, 244, 243, 0.7);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.pov-hint__close:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
 
-@keyframes pov-pulse {
-  0%, 100% { opacity: 0.85; }
-  50% { opacity: 1; }
+@keyframes pov-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
 .metric-grid--resilience {
