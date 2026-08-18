@@ -95,7 +95,8 @@ export class Controls {
     });
 
     this.dockCollapse?.addEventListener('click', () => this.toggleDock());
-    this.setDockCollapsed(localStorage.getItem('robofleet.dockCollapsed') === '1');
+    const stored = localStorage.getItem('robofleet.dockCollapsed');
+    this.setDockCollapsed(stored !== '0');
 
     let fleetTimer = null;
     this.fleet?.addEventListener('input', () => {
