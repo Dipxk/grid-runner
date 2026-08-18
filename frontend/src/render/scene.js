@@ -308,8 +308,11 @@ export class SceneRenderer {
   #drawRobot(ctx, camera, robot, isSelected, now, dt, isHovered = false) {
     const cell = camera.cell;
     const [cx, cy] = camera.centerToPx(robot.px, robot.py);
-    const color = statusColor(robot.status);
-    const edge = statusDark(robot.status);
+    const health = robot.fault?.health || (robot.operational === false ? 'offline' : 'healthy');
+    const offline = health === 'offline';
+    const degraded = health === 'degraded';
+    const color = offline ? '#7a8790' : statusColor(robot.status);
+    const edge = offline ? '#4a555c' : statusDark(robot.status);
     const idle = robot.status === 'idle';
     const carrying = robot.status === 'carrying' || robot.task?.state === 'carried';
     const size = cell * (idle ? 0.72 : 0.8);
@@ -332,7 +335,23 @@ export class SceneRenderer {
     ctx.beginPath();
     ctx.ellipse(cx, cy + size * 0.38, size * 0.5, size * 0.18, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = offline ? 0.55 : 1;
+
+    if (offline) {
+      ctx.strokeStyle = 'rgba(180, 48, 48, 0.55)';
+      ctx.lineWidth = Math.max(1.4, cell * 0.05);
+      ctx.setLineDash([cell * 0.12, cell * 0.1]);
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.max(0.5, size * 0.95), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else if (degraded) {
+      ctx.strokeStyle = 'rgba(213, 135, 42, 0.45)';
+      ctx.lineWidth = Math.max(1.2, cell * 0.045);
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.max(0.5, size * 0.9), 0, Math.PI * 2);
+      ctx.stroke();
+    }
 
     if (isSelected) {
       const r = size * 0.92 + Math.sin(now / 260) * cell * 0.04;
@@ -382,8 +401,8 @@ export class SceneRenderer {
     ctx.fill();
 
     // Status LED bar on the nose (matches the legend colour).
-    ctx.fillStyle = color;
-    ctx.shadowColor = color;
+    ctx.fillStyle = degraded && !offline ? '#d5872a' : color;
+    ctx.shadowColor = degraded && !offline ? '#d5872a' : color;
     ctx.shadowBlur = cell * 0.25;
     roundRectPath(ctx, w * 0.28, -h * 0.22, w * 0.14, h * 0.44, h * 0.08);
     ctx.fill();

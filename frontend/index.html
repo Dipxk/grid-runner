@@ -82,6 +82,35 @@
               <span class="safe" id="collision-badge">collisions <b data-metric="collisions">0</b></span>
             </div>
           </div>
+
+          <div class="metric-grid metric-grid--resilience">
+            <div class="metric">
+              <span class="metric__label">Faults</span>
+              <span class="metric__value metric__value--sm" data-metric="faultsInjected">0</span>
+            </div>
+            <div class="metric">
+              <span class="metric__label">Recoveries</span>
+              <span class="metric__value metric__value--sm" data-metric="successfulRecoveries">0</span>
+            </div>
+            <div class="metric">
+              <span class="metric__label">Reassignments</span>
+              <span class="metric__value metric__value--sm" data-metric="taskReassignments">0</span>
+            </div>
+            <div class="metric">
+              <span class="metric__label">Guard stops</span>
+              <span class="metric__value metric__value--sm" data-metric="guardInterventions">0</span>
+            </div>
+            <div class="metric">
+              <span class="metric__label">Offline</span>
+              <span class="metric__value metric__value--sm" data-metric="robotsOffline">0</span>
+            </div>
+            <div class="metric">
+              <span class="metric__label">Mean recovery</span>
+              <span class="metric__value metric__value--sm">
+                <span data-metric="meanRecoverySeconds">0</span><span class="metric__suffix">s</span>
+              </span>
+            </div>
+          </div>
         </section>
 
         <section class="legend" aria-label="Legend">
@@ -120,6 +149,7 @@
           <div class="jam-hint jam-hint--rush" id="rush-hint" hidden>Click a pick slot to drop a rush order</div>
           <div class="jam-hint jam-hint--order" id="order-hint" hidden>Click a pick slot, then a dock door</div>
           <div class="follow-chip" id="follow-chip" hidden>Following · click floor to release</div>
+          <div class="pov-hint" id="pov-hint">Click any robot to follow its POV</div>
         </div>
 
         <div class="ticker" id="ticker" aria-live="polite">
@@ -195,6 +225,11 @@
             <span class="dock__label">Black Friday</span>
           </button>
 
+          <button class="dock__btn" id="btn-resilience" title="Resilience Test scenario">
+            <svg viewBox="0 0 24 24" class="icon"><path d="M12 3 4 7v6c0 5 3.5 8.5 8 10 4.5-1.5 8-5 8-10V7l-8-4z" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/></svg>
+            <span class="dock__label">Resilience</span>
+          </button>
+
           <button class="dock__btn dock__btn--toggle" id="btn-sound" title="Sound (M)" aria-pressed="false">
             <svg viewBox="0 0 24 24" class="icon icon--muted"><path d="M5 9v6h3.2L14 19V5L8.2 9H5z" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/><path d="M17 9.5 21 14.5M21 9.5 17 14.5" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg>
             <svg viewBox="0 0 24 24" class="icon icon--live"><path d="M5 9v6h3.2L14 19V5L8.2 9H5z" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/><path d="M17 8.5a5 5 0 0 1 0 7M19.5 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg>
@@ -228,7 +263,24 @@
             <div><span id="insp-reroutes">0</span><small>reroutes</small></div>
             <div><span id="insp-blocked">0</span><small>yields</small></div>
           </div>
-          <p class="inspector__note">Camera follows this robot. Planned path is highlighted on the floor.</p>
+          <dl class="inspector__rows inspector__rows--fault">
+            <div><dt>Health</dt><dd id="insp-health">healthy</dd></div>
+            <div><dt>Fault</dt><dd id="insp-fault">—</dd></div>
+            <div><dt>Recovery</dt><dd id="insp-recovery">—</dd></div>
+            <div><dt>Faults</dt><dd id="insp-fault-count">0</dd></div>
+            <div><dt>Recoveries</dt><dd id="insp-recovery-count">0</dd></div>
+          </dl>
+          <div class="inspector__faults">
+            <p class="inspector__eyebrow">Fault injection</p>
+            <div class="inspector__fault-btns">
+              <button type="button" data-fault="robot_offline">Disable robot</button>
+              <button type="button" data-fault="slow_robot">Slow robot</button>
+              <button type="button" data-fault="planner_failure">Planner failure</button>
+              <button type="button" data-fault="communication_delay">Comm delay</button>
+              <button type="button" data-fault="clear" class="ghost">Clear fault</button>
+            </div>
+          </div>
+          <p class="inspector__note">Click a robot on the floor to follow its camera POV. Planned path is highlighted while selected.</p>
         </aside>
 
         <div class="toasts" id="toasts" aria-live="polite"></div>

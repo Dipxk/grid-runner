@@ -1,8 +1,11 @@
-# Grid Runner
+# Grid Runner — Multi-Agent Autonomous Fleet Coordination & Resilience Simulator
 
-A live warehouse operations console for a robot fleet. You place orders, jam
-aisles, and run a Black Friday peak; the fleet plans **conflict-free routes
-through a space-time reservation table** and the floor stays at zero collisions.
+Grid Runner is a live **autonomous warehouse robot coordination** console:
+multi-agent path finding with **windowed space-time A-star**, **fault injection**,
+**dynamic replanning**, **collision prevention**, and **resilience testing**.
+You place orders, jam aisles, inject robot faults, and run peak/resilience
+scenarios; the fleet plans conflict-free routes through a space-time reservation
+table and the execution guard keeps transitions safe even when plans go stale.
 
 Open it, and you run a shift — not a pathfinding demo.
 
@@ -30,7 +33,8 @@ Hard-refresh the tab if you already had it open (`Cmd+Shift+R`).
 2. **Order (O)** — click a **pick slot**, then a **dock door**. That tote jumps the queue; the pick LED and dock lamp light immediately.
 3. **Jam (J)** — click an aisle. The fleet replans around it.
 4. **Black Friday (G)** — timed peak: 32 robots, seeded aisle jams, a score.
-5. Click a robot to follow its path. **Space** pauses.
+5. **Resilience Test** — 32 robots, scheduled faults (offline / slow / planner failure), recovery grading.
+6. **Click any robot** to follow its camera POV (hint banner on the floor until you do). Select a robot to inject faults from the inspector. **Space** pauses.
 
 Rush (R) still drops a high-priority pick with a random door. Task burst (B) dumps extra random work. Live demand turns the firehose back on.
 
@@ -39,8 +43,13 @@ Dock lamps: **green** = idle, **red** = a robot is carrying to that door. Orange
 | Command | What it does |
 | --- | --- |
 | `make test` | Full suite, including 12 randomised collision scenarios |
-| `make test-fast` | Same minus the slow randomised sweep |
+| `make test-fast` | CI-equivalent pytest (skips slow randomised sweep) |
+| `make test-resilience` | Fault injection + resilience scenario tests |
 | `make bench` | Load test → `benchmarks/results.{json,md}` |
+| `make bench-planners` | WHCA* vs baseline → `benchmarks/planner_comparison.{json,md}` |
+
+GitHub Actions (`.github/workflows/ci.yml`) runs `make test-fast` on every push/PR.
+Nightly (`.github/workflows/nightly-resilience.yml`) runs the full collision and fault suites.
 
 ---
 
@@ -88,9 +97,120 @@ The left rail is ops copy (picks / hour, orders out), not algorithm debug.
 │                              reservation.py (vertex + edge reservations) │
 │      5. execute            → execution guard (independent safety layer)  │
 │      6. verify             → runtime collision assertion (stays 0)       │
-│      7. metrics            → metrics.py (rolling, simulated-time based)  │
+│      7. faults / recovery  → faults.py   (inject, hold, reassign)       │
+│      8. metrics / events   → metrics.py, telemetry.py (optional sinks)   │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Autonomous fleet architecture
+
+```
+                    GRID RUNNER
+
+              Fleet Task Dispatcher
+                       │
+                       ▼
+             Multi-Agent Planner
+          Windowed Space-Time A*
+                       │
+               Reservation Table
+             vertex + edge conflicts
+                       │
+       ┌───────────────┼───────────────┐
+       ▼               ▼               ▼
+     R01             R02              Rn
+       │               │               │
+       └───────────────┼───────────────┘
+                       ▼
+                Execution Guard
+                       │
+                Runtime Verifier
+                       │
+              Fault / Health Manager
+                       │
+                  Recovery Engine
+                       │
+          ┌────────────┼─────────────┐
+          ▼            ▼             ▼
+      Metrics       Events       Telemetry (optional)
+```
+
+---
+
+## Fault model
+
+Faults are injected through `engine.inject_fault()` / the WebSocket `fault`
+action and managed centrally in `backend/app/faults.py`:
+
+| Fault | Effect |
+| --- | --- |
+| `robot_offline` | Safe hold, reservations released, no new work; unpicked tasks return to queue |
+| `slow_robot` | Moves every N ticks; plan stretched so reservations stay consistent |
+| `planner_failure` | Safe hold with bounded retry/backoff; never bypasses execution guard |
+| `communication_delay` | Commanded moves delayed N ticks at the event layer (deterministic) |
+
+Carrying-robot failures move the task to `RECOVERY_REQUIRED` rather than
+magically transferring inventory — documented honestly in code and tests.
+
+---
+
+## Recovery architecture
+
+Per-robot state transitions correspond to real engine behaviour:
+
+`NORMAL → FAULT_DETECTED → SAFE_HOLD → RECOVERY → REPLANNING → NORMAL`
+
+Tracked fields include `fault_state`, `health`, `fault_count`, `recovery_count`,
+and recovery latency (fault cleared → navigation resumed). Task reassignment is
+recorded as `task_reassigned` events when an offline robot had an unpicked assignment.
+
+---
+
+## Resilience testing
+
+The **Resilience Test** scenario (32 robots, seeded jams, scheduled faults on
+R07/R14/R19) grades on zero collisions, recovery success, throughput maintained,
+and mean recovery latency. Run it from the dock **Resilience** button or
+`engine.begin_resilience_test()`.
+
+---
+
+## Planner benchmark
+
+`make bench-planners` runs identical seeded scenarios under:
+
+* **WHCA*** — vertex + edge space-time reservations, replanning, execution guard
+* **Baseline** — independent spatial A* without future reservations; guard still active
+
+Results: `benchmarks/planner_comparison.{json,md}`. Re-run after changes; numbers
+are measured, not estimated.
+
+---
+
+## CI / SDLC
+
+* **Fast CI** — lint-ready pytest via `make test-fast` on every push/PR
+* **Nightly** — randomised collision scenarios, dense fleet, fault/resilience tests
+* **Deterministic seeds** — fault and collision tests replay identically
+
+---
+
+## Optional ROS 2 integration
+
+Documented adapter architecture in `integrations/ros2/README.md`. The core
+simulator runs without ROS installed. Topic/action mapping is specified; a
+minimal bridge is optional when ROS 2 is present in the environment.
+
+---
+
+## Optional AWS telemetry
+
+`backend/app/telemetry.py` defines `TelemetrySink` with `ConsoleTelemetrySink`
+and `JsonTelemetrySink`. Intended MQTT → AWS IoT Core → Lambda → DynamoDB/S3
+flow is documented in `integrations/aws/README.md`. No AWS credentials are
+required for local operation; telemetry sinks are no-ops unless configured.
 
 ---
 
@@ -274,9 +394,13 @@ backend/
     models.py        Robot / Task
     metrics.py       rolling throughput, latency, tick compute
     engine.py        tick pipeline, execution guard, runtime verifier
+    faults.py        fault injection, recovery, task reassignment
+    telemetry.py     optional TelemetrySink implementations
     server.py        FastAPI, WebSocket hub, static hosting
-  scripts/benchmark.py
-  tests/
+  scripts/{benchmark,planner_comparison}.py
+  tests/test_faults.py
+integrations/{aws,ros2}/README.md
+benchmarks/{results,planner_comparison}.{json,md}
 frontend/
   index.html  styles.css
   src/
@@ -286,32 +410,23 @@ frontend/
     render/{camera,floor,scene}.js
     ui/{metrics,inspector,controls,toasts,ticker,scenario}.js
     audio/sound.js
-benchmarks/results.{json,md}
 ```
 
 ---
 
-## Resume bullet (measured, not estimated)
+## Resume bullets (measured, not estimated)
 
-> Built **Grid Runner**, a warehouse fleet ops console in Python
-> (FastAPI/asyncio) with a 60 fps Canvas frontend: space-time reservation-table
-> planning (vertex + edge reservations) makes robot plans and executed moves
-> conflict-free by construction, with **zero collisions across randomised test
-> scenarios and a 10–100 robot benchmark sweep**. Sustains **7,464 tasks/hour at
-> 100 robots** with **20 ms mean tick compute (p95 29 ms) against a 167 ms
-> budget**, and diagnosed a dropoff-station deadlock from benchmark data —
-> congestion-aware bay selection plus a step-aside recovery move took a 75-robot
-> fleet from **197 to 6,463 tasks/hour** with collisions still at zero.
-> Operators can pause random demand and place pick→dock orders on the live floor.
+Re-run `make bench` and `make bench-planners` for numbers on your machine.
 
----
+> Built **Grid Runner**, a fault-tolerant multi-agent fleet coordination simulator
+> (Python/FastAPI, Canvas): windowed space-time A* with vertex + edge reservations,
+> execution guard, and **zero collisions across randomised and fault-injection test
+> suites**. Sustains **7,464 tasks/hour at 100 robots** (20 ms mean tick, p95 29 ms).
 
-## Next
+> Implemented deterministic **fault injection** (offline / slow / planner failure /
+> comm delay) with autonomous recovery, task reassignment, and a graded **Resilience
+> Test** scenario — recovery state machine drives real engine behaviour, not UI theatre.
 
-The floor is a showable demo. The systems claim that is still missing:
-
-* **Dumb twin** — split-screen, same floor / tasks / jams. Left = reservation
-  planner (0 collisions). Right = independent A*. That is the comparison a
-  sharp interviewer will ask for.
-
-Not next: Three.js, paid hosting, more scenarios, accounts.
+> Added **CI + planner comparison benchmark** (WHCA* vs reservation-free baseline on
+> identical seeds) demonstrating why space-time reservations reduce guard interventions
+> at scale; optional telemetry/ROS/AWS adapter docs without bloating the core sim.

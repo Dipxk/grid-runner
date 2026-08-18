@@ -1,0 +1,76 @@
+{
+  "meta": {
+    "machine": "arm64 Darwin",
+    "python": "3.9.6",
+    "ticks": 600,
+    "warmup": 60,
+    "seed": 17,
+    "grid": "44x23"
+  },
+  "runs": [
+    {
+      "planner": "whca",
+      "fleet": 16,
+      "ticks": 600,
+      "wall_seconds": 1.928,
+      "tasks_completed": 237,
+      "tasks_per_hour": 1422.0,
+      "avg_task_seconds": 27.6,
+      "tick_ms_mean": 3.214,
+      "tick_ms_p95": 6.718,
+      "guard_interventions": 0,
+      "blocked_ticks": 0,
+      "replans": 1936,
+      "collisions": 0,
+      "failed_plans": 0
+    },
+    {
+      "planner": "baseline",
+      "fleet": 16,
+      "ticks": 600,
+      "wall_seconds": 7.054,
+      "tasks_completed": 0,
+      "tasks_per_hour": 0.0,
+      "avg_task_seconds": 24.4,
+      "tick_ms_mean": 11.757,
+      "tick_ms_p95": 12.357,
+      "guard_interventions": 9600,
+      "blocked_ticks": 9600,
+      "replans": 9600,
+      "collisions": 0,
+      "failed_plans": 0
+    },
+    {
+      "planner": "whca",
+      "fleet": 32,
+      "ticks": 600,
+      "wall_seconds": 3.429,
+      "tasks_completed": 455,
+      "tasks_per_hour": 2730.0,
+      "avg_task_seconds": 25.5,
+      "tick_ms_mean": 5.714,
+      "tick_ms_p95": 10.502,
+      "guard_interventions": 0,
+      "blocked_ticks": 0,
+      "replans": 3895,
+      "collisions": 0,
+      "failed_plans": 0
+    },
+    {
+      "planner": "baseline",
+      "fleet": 32,
+      "ticks": 600,
+      "wall_seconds": 18.443,
+      "tasks_completed": 1,
+      "tasks_per_hour": 6.0,
+      "avg_task_seconds": 26.0,
+      "tick_ms_mean": 30.738,
+      "tick_ms_p95": 32.039,
+      "guard_interventions": 19178,
+      "blocked_ticks": 19177,
+      "replans": 19200,
+      "collisions": 0,
+      "failed_plans": 0
+    }
+  ]
+}

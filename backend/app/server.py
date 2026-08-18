@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import SPEED_PRESETS, SimConfig, config_from_env
-from .engine import BLACK_FRIDAY, SimulationEngine
+from .engine import BLACK_FRIDAY, RESILIENCE_TEST, SimulationEngine
 
 logger = logging.getLogger("gridrunner")
 
@@ -119,17 +119,28 @@ class SimulationRunner:
         }
 
     def _launch_scenario(self, name: str) -> Dict[str, Any]:
-        if name != BLACK_FRIDAY["id"]:
+        if name == BLACK_FRIDAY["id"]:
+            spec = BLACK_FRIDAY
+            self.config = SimConfig(
+                fleet_size=spec["fleet"],
+                seed=spec["seed"],
+                initial_tasks=spec["initial_tasks"],
+                jam_duration_ticks=spec["duration"] + 40,
+            )
+            self.engine = SimulationEngine(self.config)
+            payload = self.engine.begin_black_friday()
+        elif name == RESILIENCE_TEST["id"]:
+            spec = RESILIENCE_TEST
+            self.config = SimConfig(
+                fleet_size=spec["fleet"],
+                seed=spec["seed"],
+                initial_tasks=spec["initial_tasks"],
+                jam_duration_ticks=spec["duration"] + 40,
+            )
+            self.engine = SimulationEngine(self.config)
+            payload = self.engine.begin_resilience_test()
+        else:
             return {"scenario": {"ok": False, "reason": "unknown scenario"}}
-        spec = BLACK_FRIDAY
-        self.config = SimConfig(
-            fleet_size=spec["fleet"],
-            seed=spec["seed"],
-            initial_tasks=spec["initial_tasks"],
-            jam_duration_ticks=spec["duration"] + 40,
-        )
-        self.engine = SimulationEngine(self.config)
-        payload = self.engine.begin_black_friday()
         self.running = True
         self._resume.set()
         return {
@@ -244,6 +255,16 @@ class SimulationRunner:
                 extra = self._launch_scenario(str(message.get("name", "black_friday")))
             elif action == "fleet":
                 self.engine.set_fleet_size(int(message.get("value", 12)))
+            elif action == "fault":
+                robot_id = int(message.get("robot", 0))
+                fault_type = str(message.get("type", "robot_offline"))
+                params = message.get("params") or {}
+                result = self.engine.inject_fault(robot_id, fault_type, params)
+                extra = {"fault": result}
+            elif action == "clear_fault":
+                robot_id = int(message.get("robot", 0))
+                result = self.engine.clear_fault(robot_id)
+                extra = {"fault": result}
             elif action == "reset":
                 seed = int(message.get("seed", self.config.seed + 1))
                 self.config = self.config.replace(
@@ -276,7 +297,8 @@ def create_app(config: Optional[SimConfig] = None) -> FastAPI:
         # Let the portfolio (and any other site) iframe the live demo.
         response = await call_next(request)
         response.headers["Content-Security-Policy"] = "frame-ancestors *"
-        response.headers.pop("X-Frame-Options", None)
+        if "X-Frame-Options" in response.headers:
+            del response.headers["X-Frame-Options"]
         return response
 
     @app.get("/api/health")

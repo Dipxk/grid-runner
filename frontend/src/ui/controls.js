@@ -28,6 +28,7 @@ export class Controls {
     this.demandLabel = root.querySelector('#demand-label');
     this.burstBtn = root.querySelector('#btn-burst');
     this.scenarioBtn = root.querySelector('#btn-scenario');
+    this.resilienceBtn = root.querySelector('#btn-resilience');
     this.soundBtn = root.querySelector('#btn-sound');
     this.resetBtn = root.querySelector('#btn-reset');
     this.speedGroup = root.querySelector('#speeds');
@@ -69,6 +70,12 @@ export class Controls {
       this.send({ action: 'scenario', name: 'black_friday' });
       flash(this.scenarioBtn);
       this.toasts.show('Black Friday — keep the docks moving', 'warn');
+    });
+
+    this.resilienceBtn?.addEventListener('click', () => {
+      this.send({ action: 'scenario', name: 'resilience_test' });
+      flash(this.resilienceBtn);
+      this.toasts.show('Resilience Test — faults scheduled, recover cleanly', 'warn');
     });
 
     this.soundBtn?.addEventListener('click', () => {

@@ -24,6 +24,8 @@ class TaskState:
     ASSIGNED = "assigned"
     CARRIED = "carried"
     DONE = "done"
+    #: Robot failed while carrying — inventory stays with the disabled robot.
+    RECOVERY_REQUIRED = "recovery_required"
 
 
 @dataclass
@@ -89,6 +91,8 @@ class Robot:
     #: Ticks remaining of the "rerouting" visual state after a forced replan.
     reroute_flash: int = 0
     facing: str = "east"
+    #: False when fault-injected offline — no allocation or movement.
+    operational: bool = True
 
     # ------------------------------------------------------------------
     @property

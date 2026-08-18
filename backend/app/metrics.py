@@ -27,6 +27,8 @@ class MetricsTracker:
         self.replans = 0
         self.failed_plans = 0
         self.expansions = 0
+        self.planner_failures = 0
+        self.task_reassignments = 0
 
     # ------------------------------------------------------------------
     def record_completion(self, tick: int, cycle_ticks: Optional[int]) -> None:
@@ -77,8 +79,8 @@ class MetricsTracker:
         return max(self.tick_ms) if self.tick_ms else 0.0
 
     # ------------------------------------------------------------------
-    def snapshot(self, tick: int, active_robots: int, fleet: int, pending: int) -> Dict[str, Any]:
-        return {
+    def snapshot(self, tick: int, active_robots: int, fleet: int, pending: int, resilience: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        base = {
             "tick": tick,
             "tasksPerHour": round(self.tasks_per_hour(tick), 1),
             "tasksCompleted": self.total_completed,
@@ -95,3 +97,6 @@ class MetricsTracker:
             "utilization": round(active_robots / fleet, 3) if fleet else 0.0,
             "throughputHistory": [round(v, 1) for v in self.throughput_history],
         }
+        if resilience:
+            base.update(resilience)
+        return base

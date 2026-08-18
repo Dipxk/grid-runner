@@ -33,9 +33,10 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .allocator import GreedyAllocator, apply_assignment
 from .config import SimConfig
+from .faults import FaultManager, FaultType
 from .metrics import MetricsTracker
 from .models import Robot, RobotStatus, Task, TaskState
-from .pathfinding import plan_path
+from .pathfinding import plan_path, static_path
 from .reservation import ReservationTable
 from .world import CHARGER, DROPOFF, FLOOR, PICKUP, World, manhattan
 
@@ -63,6 +64,22 @@ BLACK_FRIDAY = {
     "initial_tasks": 36,
 }
 
+RESILIENCE_TEST = {
+    "id": "resilience_test",
+    "title": "Resilience Test",
+    "blurb": "Peak demand with aisle jams and injected robot faults. Recover without collisions.",
+    "fleet": 32,
+    "duration": 200,
+    "target": 80,
+    "seed": 77,
+    "initial_tasks": 30,
+    "fault_schedule": [
+        {"tick": 40, "robot": 7, "type": "robot_offline"},
+        {"tick": 70, "robot": 14, "type": "slow_robot", "params": {"stride": 3}},
+        {"tick": 100, "robot": 19, "type": "planner_failure", "params": {"hold_ticks": 10}},
+    ],
+}
+
 
 def _scenario_grade(delivered: int, target: int, collisions: int) -> str:
     if collisions:
@@ -75,6 +92,27 @@ def _scenario_grade(delivered: int, target: int, collisions: int) -> str:
     if ratio >= 0.7:
         return "B"
     if ratio >= 0.4:
+        return "C"
+    return "D"
+
+
+def _resilience_grade(sc: Dict[str, Any], collisions: int) -> str:
+    if collisions:
+        return "F"
+    recovered = int(sc.get("faultsRecovered", 0))
+    injected = max(1, int(sc.get("faultsInjected", 0)))
+    recovery_rate = recovered / injected
+    delivered = int(sc.get("delivered", 0))
+    target = int(sc.get("target", 1))
+    throughput = delivered / max(1, target)
+    mean_recovery = sc.get("meanRecoverySeconds", 99.0)
+    if recovery_rate >= 0.9 and throughput >= 0.85 and mean_recovery <= 3.0:
+        return "S"
+    if recovery_rate >= 0.75 and throughput >= 0.7:
+        return "A"
+    if recovery_rate >= 0.5 and throughput >= 0.5:
+        return "B"
+    if throughput >= 0.3:
         return "C"
     return "D"
 
@@ -101,6 +139,7 @@ class SimulationEngine:
         self.scenario: Optional[Dict[str, Any]] = None
         #: When True, ambient random demand is off — only dispatcher-placed orders.
         self.manual_demand: bool = False
+        self.faults = FaultManager(self)
         self._parking: List[Cell] = self._parking_spots()
         self._spawn_fleet(self.config.fleet_size)
         for _ in range(self.config.initial_tasks):
@@ -373,6 +412,47 @@ class SimulationEngine:
             if task not in self.pending:
                 self.pending.append(task)
 
+    def _return_task_to_queue(
+        self, task: Task, robot: Robot, tick: int, reason: str = "reassign"
+    ) -> None:
+        """Return an unpicked assignment to the pending queue for reassignment."""
+        from .models import RobotStatus
+
+        task.state = TaskState.PENDING
+        task.assigned_to = None
+        task.assigned_tick = None
+        if task not in self.pending:
+            self.pending.insert(0, task)
+        robot.task = None
+        robot.status = RobotStatus.IDLE
+        self.table.release_agent(robot.id)
+        robot.invalidate_plan()
+        self.faults.task_reassignments += 1
+        self.metrics.task_reassignments += 1
+        self.events.append(
+            {
+                "type": "task_reassigned",
+                "task": task.id,
+                "fromRobot": robot.id,
+                "reason": reason,
+                "tick": tick,
+            }
+        )
+
+    def inject_fault(
+        self, robot_id: int, fault_type: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        return self.faults.inject_fault(robot_id, fault_type, params)
+
+    def clear_fault(self, robot_id: int) -> Dict[str, Any]:
+        robot = self._robot(robot_id)
+        if robot is not None:
+            robot.operational = True
+        return self.faults.clear_fault(robot_id)
+
+    def active_faults(self) -> List[Dict[str, Any]]:
+        return self.faults.active_faults()
+
     # ------------------------------------------------------------------
     # scenario
     # ------------------------------------------------------------------
@@ -400,6 +480,33 @@ class SimulationEngine:
         self.events.append({"type": "scenario_start", "id": spec["id"], "tick": self.tick})
         return self.scenario_payload()
 
+    def begin_resilience_test(self) -> Dict[str, Any]:
+        spec = RESILIENCE_TEST
+        self._seed_incident_jams(spec["duration"] + 20)
+        self.add_task_burst(16)
+        self.scenario = {
+            "id": spec["id"],
+            "title": spec["title"],
+            "blurb": spec["blurb"],
+            "startTick": self.tick,
+            "duration": spec["duration"],
+            "target": spec["target"],
+            "startCompleted": self.metrics.total_completed,
+            "delivered": 0,
+            "jamsPlaced": 0,
+            "rushOrders": 0,
+            "faultsInjected": 0,
+            "faultsRecovered": 0,
+            "taskReassignments": 0,
+            "active": True,
+            "grade": None,
+            "score": 0,
+            "remaining": spec["duration"],
+            "faultSchedule": list(spec.get("fault_schedule", [])),
+        }
+        self.events.append({"type": "scenario_start", "id": spec["id"], "tick": self.tick})
+        return self.scenario_payload()
+
     def _seed_incident_jams(self, duration: int) -> None:
         """Block a stretch of a busy east-west aisle so the fleet has to reroute."""
         h, w = self.world.height, self.world.width
@@ -420,6 +527,23 @@ class SimulationEngine:
                 {"type": "jam_added", "cell": [w // 2, y], "tick": self.tick, "expires": self.tick + duration}
             )
 
+    def _tick_resilience_faults(self, now: int) -> None:
+        sc = self.scenario
+        if not sc or not sc.get("active") or sc.get("id") != RESILIENCE_TEST["id"]:
+            return
+        schedule = sc.get("faultSchedule") or []
+        remaining: List[Dict[str, Any]] = []
+        for item in schedule:
+            if int(item.get("tick", -1)) == now:
+                self.inject_fault(
+                    int(item["robot"]),
+                    str(item["type"]),
+                    dict(item.get("params") or {}),
+                )
+            elif int(item.get("tick", -1)) > now:
+                remaining.append(item)
+        sc["faultSchedule"] = remaining
+
     def _tick_scenario(self) -> None:
         sc = self.scenario
         if not sc or not sc.get("active"):
@@ -429,9 +553,23 @@ class SimulationEngine:
         sc["delivered"] = delivered
         sc["remaining"] = max(0, int(sc["duration"]) - elapsed)
         sc["score"] = delivered * 12 + int(sc.get("rushOrders", 0)) * 8
+        if sc["id"] == RESILIENCE_TEST["id"]:
+            sc["faultsInjected"] = self.faults.faults_injected
+            sc["faultsRecovered"] = self.faults.successful_recoveries
+            sc["taskReassignments"] = self.faults.task_reassignments
+            sc["meanRecoverySeconds"] = round(
+                self.faults.mean_recovery_ticks() * self.config.seconds_per_tick, 2
+            )
+            sc["score"] = (
+                delivered * 10
+                + sc["faultsRecovered"] * 15
+                - self.metrics.collisions * 100
+            )
         if elapsed >= int(sc["duration"]):
             sc["active"] = False
             sc["grade"] = _scenario_grade(delivered, int(sc["target"]), self.metrics.collisions)
+            if sc["id"] == RESILIENCE_TEST["id"]:
+                sc["grade"] = _resilience_grade(sc, self.metrics.collisions)
             self.events.append(
                 {
                     "type": "scenario_over",
@@ -461,6 +599,8 @@ class SimulationEngine:
         self.table.advance_to(now)
 
         self._spawn_tasks_for_tick()
+        self._tick_resilience_faults(now)
+        self.faults.tick(now)
         self._allocate(now)
         self._plan_phase(now)
         moved = self._execute_phase(now)
@@ -591,6 +731,19 @@ class SimulationEngine:
     def _plan_phase(self, now: int) -> None:
         self._rebalance_dropoffs()
         for robot in self._priority_order():
+            if self.faults.is_offline(robot.id):
+                self.table.release_agent(robot.id)
+                robot.plan = [robot.pos]
+                robot.plan_t0 = now
+                continue
+            if self.faults.is_planner_blocked(robot.id, now):
+                robot.plan = [robot.pos]
+                robot.plan_t0 = now
+                robot.plan_partial = True
+                continue
+            if self.config.planner_mode == "baseline":
+                self._plan_baseline(robot, now)
+                continue
             if not self._plan_needs_refresh(robot, now):
                 continue
             goal = robot.goal or robot.pos
@@ -630,10 +783,59 @@ class SimulationEngine:
                 robot.plan_partial = True
                 continue
             self.metrics.expansions += result.expansions
-            self.table.commit_path(robot.id, result.path, now)
-            robot.plan = list(result.path)
+            path = list(result.path)
+            if self.faults.is_slow(robot.id):
+                path = self._stretch_plan_for_slow(path, self.faults.slow_stride(robot.id))
+            if not self.table.can_commit(robot.id, path, now):
+                robot.plan = [robot.pos]
+                robot.plan_t0 = now
+                robot.plan_partial = True
+                continue
+            self.table.commit_path(robot.id, path, now)
+            robot.plan = path
             robot.plan_t0 = now
             robot.plan_partial = not result.complete
+
+    def _plan_baseline(self, robot: Robot, now: int) -> None:
+        """Independent spatial A* — no space-time reservations (benchmark only)."""
+        goal = robot.goal or robot.pos
+        path: List[Cell] = [robot.pos]
+        cur = robot.pos
+        for _ in range(self.config.horizon):
+            if cur == goal:
+                path.append(cur)
+                continue
+            segment = static_path(self.world, cur, goal, now + len(path))
+            if not segment or len(segment) < 2:
+                break
+            cur = segment[1]
+            if not self.world.is_passable(cur, now + len(path)):
+                break
+            path.append(cur)
+        while len(path) < self.config.horizon + 1:
+            path.append(path[-1])
+        path = path[: self.config.horizon + 1]
+        self.table.release_agent(robot.id)
+        robot.plan = path
+        robot.plan_t0 = now
+        robot.plan_partial = path[-1] != goal
+        robot.replans += 1
+        self.metrics.replans += 1
+
+    def _stretch_plan_for_slow(self, path: List[Cell], stride: int) -> List[Cell]:
+        """Insert wait ticks before the next move so reservations stay consistent."""
+        if stride <= 1 or len(path) < 2:
+            return path
+        out: List[Cell] = [path[0]]
+        for _ in range(stride - 1):
+            out.append(path[0])
+        out.extend(path[1:])
+        max_len = self.config.horizon + 1
+        if len(out) > max_len:
+            out = out[:max_len]
+        elif len(out) < max_len:
+            out.extend([out[-1]] * (max_len - len(out)))
+        return out
 
     # ------------------------------------------------------------------
     def _execute_phase(self, now: int) -> Dict[int, Tuple[Cell, Cell]]:
@@ -646,6 +848,10 @@ class SimulationEngine:
 
         # --- desired moves -------------------------------------------------
         for robot in robots:
+            if self.faults.is_offline(robot.id):
+                target[robot.id] = robot.pos
+                moving[robot.id] = False
+                continue
             nxt = robot.next_cell()
             if nxt is None or nxt == robot.pos:
                 target[robot.id] = robot.pos
@@ -655,6 +861,11 @@ class SimulationEngine:
                 target[robot.id] = robot.pos
                 moving[robot.id] = False
                 self._reject(robot, "illegal step")
+                continue
+            nxt = self.faults.apply_comm_delay(robot, nxt, now)
+            if nxt == robot.pos:
+                target[robot.id] = robot.pos
+                moving[robot.id] = False
                 continue
             target[robot.id] = nxt
             moving[robot.id] = True
@@ -709,7 +920,16 @@ class SimulationEngine:
         moved: Dict[int, Tuple[Cell, Cell]] = {}
         for robot in robots:
             dest = target[robot.id]
-            if moving[robot.id] and dest != robot.pos:
+            will_move = moving[robot.id]
+
+            if self.faults.is_offline(robot.id):
+                will_move = False
+                dest = robot.pos
+            elif not self.faults.should_execute_move(robot.id, now):
+                will_move = False
+                dest = robot.pos
+
+            if will_move and dest != robot.pos:
                 robot.set_facing(robot.pos, dest)
                 moved[robot.id] = (robot.pos, dest)
                 robot.pos = dest
@@ -724,7 +944,7 @@ class SimulationEngine:
                 robot.stuck_ticks = robot.stuck_ticks + 1 if goal is not None and goal != robot.pos else 0
                 if robot.plan and robot.plan[0] == robot.pos and len(robot.plan) > 1 and robot.plan[1] == robot.pos:
                     robot.advance_plan()  # planned wait: consume it
-                elif robot.plan:
+                elif robot.plan and len(robot.plan) > 1:
                     # Plan diverged from reality — drop it and replan next tick.
                     self.table.release_agent(robot.id)
                     robot.invalidate_plan()
@@ -831,6 +1051,7 @@ class SimulationEngine:
         for robot in self.robots:
             payload = robot.to_payload()
             payload["status"] = self.display_status(robot)
+            payload["fault"] = self.faults._record(robot.id).to_payload(self.tick)
             if robot.task is not None:
                 payload["task"] = {
                     "id": robot.task.id,
@@ -873,7 +1094,9 @@ class SimulationEngine:
                 active_robots=active,
                 fleet=len(self.robots),
                 pending=len(self.pending),
+                resilience=self.faults.snapshot_metrics(),
             ),
+            "faults": self.faults.active_faults(),
             "scenario": self.scenario_payload(),
             "manualDemand": self.manual_demand,
             "dispatch": [

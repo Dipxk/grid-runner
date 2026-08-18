@@ -37,6 +37,9 @@ class SimConfig:
     #: Hard cap on A* expansions per replan, so one pathological robot cannot
     #: blow the tick budget for the whole fleet.
     max_expansions: int = 6000
+    #: ``whca`` = space-time reservations (default). ``baseline`` = independent
+    #: spatial A* with execution-guard-only conflict resolution (for benchmarks).
+    planner_mode: str = "whca"
     #: Waiting is slightly more expensive than moving so robots prefer to keep
     #: flowing rather than idle in an aisle (reduces gridlock).
     wait_cost: float = 1.05

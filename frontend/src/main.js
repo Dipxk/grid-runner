@@ -34,11 +34,24 @@ const scene = new SceneRenderer();
 const buffer = new TickBuffer();
 const metrics = new MetricsPanel();
 const toasts = new Toasts(document.getElementById('toasts'));
-const inspector = new Inspector(document, { onClose: () => selectRobot(null) });
+const inspector = new Inspector(document, {
+  onClose: () => selectRobot(null),
+  onFault: (action, type) => {
+    if (state.selectedId === null) return;
+    if (action === 'clear') {
+      socket.send({ action: 'clear_fault', robot: state.selectedId });
+      toasts.show(`R${state.selectedId} fault cleared`, 'good');
+      return;
+    }
+    socket.send({ action: 'fault', robot: state.selectedId, type });
+    toasts.show(`R${state.selectedId} · ${type.replace(/_/g, ' ')}`, 'warn');
+  },
+});
 const scenarioHud = new ScenarioHud(document);
 const sound = new SoundBed();
 const ticker = new OpsTicker(document);
 const followChip = document.getElementById('follow-chip');
+const povHint = document.getElementById('pov-hint');
 
 const state = {
   world: null,
@@ -150,11 +163,33 @@ function ingest(snapshot) {
       } else if (event.type === 'demand') {
         ticker.push(event.manual ? 'You dispatch — random orders paused' : 'Live demand resumed', event.manual ? 'warn' : 'good');
       } else if (event.type === 'scenario_start') {
-        ticker.push('Black Friday — peak hour', 'warn');
+        const label = event.id === 'resilience_test' ? 'Resilience Test' : 'Black Friday — peak hour';
+        ticker.push(label, 'warn');
       } else if (event.type === 'scenario_over') {
         sound.scenarioOver(event.grade);
-        toasts.show(`Black Friday over — grade ${event.grade}, score ${event.score}`, event.grade === 'F' ? 'bad' : 'good');
-        ticker.push(`Black Friday over · grade ${event.grade}`, event.grade === 'F' ? 'warn' : 'good');
+        const name = event.id === 'resilience_test' ? 'Resilience Test' : 'Black Friday';
+        toasts.show(`${name} over — grade ${event.grade}, score ${event.score}`, event.grade === 'F' ? 'bad' : 'good');
+        ticker.push(`${name} over · grade ${event.grade}`, event.grade === 'F' ? 'warn' : 'good');
+      } else if (event.type === 'fault_detected') {
+        ticker.push(`R${event.robot} fault · ${faultLabel(event.fault)}`, 'warn');
+      } else if (event.type === 'robot_offline') {
+        ticker.push(`R${event.robot} OFFLINE`, 'warn');
+      } else if (event.type === 'robot_recovered') {
+        ticker.push(`R${event.robot} RECOVERED — navigation resumed`, 'good');
+      } else if (event.type === 'task_reassigned') {
+        ticker.push(`R${event.fromRobot} OFFLINE — task #${event.task} returned to queue`, 'warn');
+      } else if (event.type === 'planner_failure') {
+        ticker.push(`R${event.robot} PLANNER FAILURE — safe hold`, 'warn');
+      } else if (event.type === 'recovery_started') {
+        ticker.push(`R${event.robot} recovery started`, 'warn');
+      } else if (event.type === 'recovery_completed') {
+        const sec = event.latencyTicks != null ? Number(event.latencyTicks).toFixed(1) : null;
+        ticker.push(
+          sec ? `R${event.robot} RECOVERED — navigation resumed in ${sec}s` : `R${event.robot} RECOVERED`,
+          'good',
+        );
+      } else if (event.type === 'recovery_required') {
+        ticker.push(`R${event.robot} carrying task #${event.task} — manual recovery required`, 'warn');
       }
     }
     state.seenEventTick = snapshot.tick;
@@ -230,8 +265,13 @@ function pointerPrecise(event) {
 function selectRobot(id) {
   state.selectedId = id;
   if (followChip) followChip.hidden = id === null;
+  if (id !== null && povHint) {
+    povHint.hidden = true;
+    state.povHintDismissed = true;
+  }
   if (id === null) {
     inspector.update(null);
+    if (povHint && !state.povHintDismissed) povHint.hidden = false;
     return;
   }
   const snapshot = buffer.latest();
@@ -392,6 +432,10 @@ function doorLabel(cell) {
     if (i >= 0) return `DOOR ${String(i + 1).padStart(2, '0')}`;
   }
   return cell ? `door ${cell[0]},${cell[1]}` : 'door';
+}
+
+function faultLabel(type) {
+  return String(type || '').replace(/_/g, ' ');
 }
 
 socket.connect();

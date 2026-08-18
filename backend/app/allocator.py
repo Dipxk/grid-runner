@@ -36,7 +36,7 @@ class GreedyAllocator:
         pending: List[Task],
         tick: int,
     ) -> List[Tuple[Robot, Task]]:
-        idle = [r for r in robots if r.task is None and not r.queue]
+        idle = [r for r in robots if r.task is None and not r.queue and r.operational]
         if not idle or not pending:
             return []
 
