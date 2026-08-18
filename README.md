@@ -6,6 +6,9 @@ through a space-time reservation table** and the floor stays at zero collisions.
 
 Open it, and you run a shift — not a pathfinding demo.
 
+**Live demo:** https://grid-runner-vnj2.onrender.com  
+(Free Render host — first load after idle can take ~30–60s.)
+
 ## Quick start
 
 ```bash
