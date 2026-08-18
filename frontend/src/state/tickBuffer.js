@@ -20,9 +20,13 @@
  *    linear interpolation).
  */
 
-const DELAY_TICKS = 2.05; // render this far behind the newest snapshot
-const MAX_SNAPSHOTS = 8;
-const REBASE_THRESHOLD_MS = 420;
+const isRemoteHost = typeof location !== 'undefined'
+  && !['localhost', '127.0.0.1'].includes(location.hostname);
+
+// Remote hosts (Render, etc.) need more buffer — WebSocket jitter is higher than localhost.
+const DELAY_TICKS = isRemoteHost ? 3.2 : 2.05;
+const MAX_SNAPSHOTS = isRemoteHost ? 12 : 8;
+const REBASE_THRESHOLD_MS = isRemoteHost ? 720 : 420;
 
 export class TickBuffer {
   constructor(intervalMs = 167) {
@@ -61,9 +65,10 @@ export class TickBuffer {
         this.baseTick = tick;
         this.baseTime = now;
         this.#retime();
-      } else {
+      }       else {
         // Nudge the clock so small persistent drift is absorbed invisibly.
-        this.baseTime += drift * 0.02;
+        const nudge = isRemoteHost ? 0.035 : 0.02;
+        this.baseTime += drift * nudge;
       }
     }
 

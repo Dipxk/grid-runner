@@ -11,6 +11,6 @@ services:
     healthCheckPath: /api/health
     envVars:
       - key: GRIDRUNNER_FLEET_SIZE
-        value: "18"
+        value: "12"
       - key: GRIDRUNNER_TICKS_PER_SECOND
-        value: "6"
+        value: "4"
