@@ -548,10 +548,25 @@ kbd {
   background: #ffffff;
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
-  pointer-events: none;
+  pointer-events: auto;
   z-index: 4;
 }
 .scenario[hidden] { display: none; }
+.scenario__close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-400);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.scenario__close:hover { color: var(--ink-900); background: var(--surface-2); }
 .scenario__kicker {
   font-family: var(--font-mono);
   font-size: 10px;

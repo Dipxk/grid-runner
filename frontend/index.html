@@ -168,6 +168,7 @@
         </div>
 
         <aside class="scenario" id="scenario-hud" hidden>
+          <button type="button" class="scenario__close" id="scenario-close" aria-label="Dismiss scenario">×</button>
           <div class="scenario__kicker">Scenario</div>
           <h2 class="scenario__title" id="scenario-title">Black Friday</h2>
           <p class="scenario__blurb" id="scenario-blurb">Peak hour. Keep the docks moving.</p>
@@ -179,8 +180,8 @@
           <div class="scenario__grade" id="scenario-grade" hidden></div>
         </aside>
 
-        <div class="dock is-collapsed" id="dock" role="toolbar" aria-label="Simulation controls">
-          <button class="dock__collapse" id="btn-dock-collapse" type="button" title="Show controls (H)" aria-expanded="false" aria-controls="dock">
+        <div class="dock" id="dock" role="toolbar" aria-label="Simulation controls">
+          <button class="dock__collapse" id="btn-dock-collapse" type="button" title="Hide controls (H)" aria-expanded="true" aria-controls="dock">
             <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span class="dock__collapse-label">Controls</span>
           </button>

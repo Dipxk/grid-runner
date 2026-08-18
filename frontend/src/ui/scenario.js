@@ -10,11 +10,33 @@ export class ScenarioHud {
     this.target = root.querySelector('#scenario-target');
     this.score = root.querySelector('#scenario-score');
     this.grade = root.querySelector('#scenario-grade');
+    this.close = root.querySelector('#scenario-close');
+    this._hideTimer = null;
+    this.dismissed = false;
+    this.close?.addEventListener('click', () => {
+      this.dismissed = true;
+      if (this._hideTimer) {
+        clearTimeout(this._hideTimer);
+        this._hideTimer = null;
+      }
+      if (this.el) this.el.hidden = true;
+    });
   }
 
   update(sc) {
     if (!this.el) return;
     if (!sc) {
+      this.el.hidden = true;
+      return;
+    }
+    if (sc.active) {
+      this.dismissed = false;
+      if (this._hideTimer) {
+        clearTimeout(this._hideTimer);
+        this._hideTimer = null;
+      }
+    }
+    if (this.dismissed) {
       this.el.hidden = true;
       return;
     }
@@ -29,6 +51,13 @@ export class ScenarioHud {
     if (this.grade) {
       this.grade.hidden = !(sc.grade && !sc.active);
       this.grade.textContent = sc.grade ? `Grade ${sc.grade}` : '';
+    }
+    if (!sc.active && sc.grade && !this._hideTimer) {
+      this._hideTimer = setTimeout(() => {
+        this.dismissed = true;
+        this._hideTimer = null;
+        if (this.el) this.el.hidden = true;
+      }, 8000);
     }
   }
 }
