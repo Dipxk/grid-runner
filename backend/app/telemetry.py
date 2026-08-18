@@ -14,7 +14,9 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-logger = logging.getLogger("gridrunner.telemetry")
+from app.config import env_get
+
+logger = logging.getLogger("robofleet.telemetry")
 
 TELEMETRY_EVENT_TYPES: Set[str] = {
     "fault_detected",
@@ -108,8 +110,8 @@ class AwsIotTelemetrySink(TelemetrySink):
         key_path: Path,
         *,
         ca_path: Optional[Path] = None,
-        client_id: str = "grid-runner",
-        topic_prefix: str = "gridrunner",
+        client_id: str = "robofleet",
+        topic_prefix: str = "robofleet",
     ) -> None:
         self.endpoint = endpoint
         self.cert_path = cert_path
@@ -244,14 +246,14 @@ def build_aws_sink() -> Optional[AwsIotTelemetrySink]:
         cert_path=Path(cert),
         key_path=Path(key),
         ca_path=Path(ca) if ca else None,
-        client_id=os.environ.get("AWS_IOT_CLIENT_ID", "grid-runner"),
-        topic_prefix=os.environ.get("AWS_IOT_TOPIC_PREFIX", "gridrunner"),
+        client_id=os.environ.get("AWS_IOT_CLIENT_ID", "robofleet"),
+        topic_prefix=os.environ.get("AWS_IOT_TOPIC_PREFIX", "robofleet"),
     )
 
 
 def telemetry_from_env() -> TelemetrySink:
-    """Select sink(s) from ``GRIDRUNNER_TELEMETRY`` and AWS env vars."""
-    mode = (os.environ.get("GRIDRUNNER_TELEMETRY") or "").strip().lower()
+    """Select sink(s) from ``ROBOFLEET_TELEMETRY`` and AWS env vars."""
+    mode = (env_get("TELEMETRY") or "").strip().lower()
     default_json = Path(__file__).resolve().parents[2] / "benchmarks" / "telemetry.jsonl"
 
     if not mode:
@@ -264,12 +266,12 @@ def telemetry_from_env() -> TelemetrySink:
     if mode == "console":
         return ConsoleTelemetrySink()
     if mode == "json":
-        path = Path(os.environ.get("GRIDRUNNER_TELEMETRY_PATH", str(default_json)))
+        path = Path(env_get("TELEMETRY_PATH", str(default_json)) or default_json)
         return JsonTelemetrySink(path)
     if mode == "aws":
         aws = build_aws_sink()
         if aws is None:
-            logger.warning("GRIDRUNNER_TELEMETRY=aws but AWS IoT env vars missing; using null sink")
+            logger.warning("ROBOFLEET_TELEMETRY=aws but AWS IoT env vars missing; using null sink")
             return NullTelemetrySink()
         return aws
 
@@ -283,7 +285,7 @@ def telemetry_from_env() -> TelemetrySink:
             sinks.append(ConsoleTelemetrySink())
         return CompositeTelemetrySink(sinks) if sinks else NullTelemetrySink()
 
-    logger.warning("unknown GRIDRUNNER_TELEMETRY=%r; using null sink", mode)
+    logger.warning("unknown ROBOFLEET_TELEMETRY=%r; using null sink", mode)
     return NullTelemetrySink()
 
 

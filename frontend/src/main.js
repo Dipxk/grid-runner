@@ -351,7 +351,7 @@ function frame(now) {
     // and keep going so the rest of the UI stays interactive.
     if (state.lastError !== String(error)) {
       state.lastError = String(error);
-      console.error('[grid-runner] frame error', error);
+      console.error('[robofleet] frame error', error);
     }
   }
   requestAnimationFrame(frame);
@@ -441,8 +441,8 @@ function faultLabel(type) {
 socket.connect();
 requestAnimationFrame(frame);
 
-// Debug handle: `__gridRunner.buffer.sample(performance.now())` shows exactly
+// Debug handle: `__roboFleet.buffer.sample(performance.now())` shows exactly
 // what the renderer sees on the current frame, and `renderOnce()` forces a
 // synchronous repaint (useful for screenshots and headless capture, where
 // requestAnimationFrame may be throttled).
-window.__gridRunner = { buffer, camera, scene, state, socket, renderOnce: () => renderFrame(performance.now()) };
+window.__roboFleet = { buffer, camera, scene, state, socket, renderOnce: () => renderFrame(performance.now()) };

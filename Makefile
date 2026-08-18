@@ -1,4 +1,4 @@
-VENV ?= gr-env
+VENV ?= robofleet-env
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 PORT ?= 8000

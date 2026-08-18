@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Bridge Grid Runner WebSocket snapshots to ROS 2 topics.
+"""Bridge RoboFleet WebSocket snapshots to ROS 2 topics.
 
 Dependency direction:
-    ROS 2 bridge  →  Grid Runner HTTP/WebSocket API
+    ROS 2 bridge  →  RoboFleet HTTP/WebSocket API
 NOT:
-    Grid Runner core  →  ROS required
+    RoboFleet core  →  ROS required
 
 Run (requires ROS 2 + rclpy + websockets installed):
-    ros2 run grid_runner_bridge bridge_node --ros-args -p grid_runner_url:=ws://127.0.0.1:8000/ws
+    ros2 run robofleet_bridge bridge_node --ros-args -p robofleet_url:=ws://127.0.0.1:8000/ws
 """
 
 from __future__ import annotations
@@ -30,28 +30,28 @@ except ImportError:  # pragma: no cover - environment without ROS
     Node = object  # type: ignore
 
 
-class GridRunnerBridge(Node):
-    """Subscribe to Grid Runner ticks and republish as ROS 2 messages."""
+class RoboFleetBridge(Node):
+    """Subscribe to RoboFleet ticks and republish as ROS 2 messages."""
 
     def __init__(self) -> None:
-        super().__init__("grid_runner_bridge")
-        self.url = self.declare_parameter("grid_runner_url", "ws://127.0.0.1:8000/ws").value
-        self.fleet_pub = self.create_publisher(String, "/grid_runner/fleet_state", 10)
-        self.events_pub = self.create_publisher(String, "/grid_runner/events", 10)
+        super().__init__("robofleet_bridge")
+        self.url = self.declare_parameter("robofleet_url", "ws://127.0.0.1:8000/ws").value
+        self.fleet_pub = self.create_publisher(String, "/robofleet/fleet_state", 10)
+        self.events_pub = self.create_publisher(String, "/robofleet/events", 10)
         self.robot_pubs: Dict[int, Any] = {}
         self.pose_pubs: Dict[int, Any] = {}
         self.command_sub = self.create_subscription(
             String,
-            "/grid_runner/command",
+            "/robofleet/command",
             self._on_command,
             10,
         )
-        self.ping_srv = self.create_service(Trigger, "/grid_runner/ping", self._on_ping)
+        self.ping_srv = self.create_service(Trigger, "/robofleet/ping", self._on_ping)
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(target=self._run_async_loop, daemon=True)
         self._thread.start()
         asyncio.run_coroutine_threadsafe(self._ws_loop(), self._loop)
-        self.get_logger().info("Grid Runner bridge listening on %s" % self.url)
+        self.get_logger().info("RoboFleet bridge listening on %s" % self.url)
 
     def _run_async_loop(self) -> None:
         asyncio.set_event_loop(self._loop)
@@ -82,10 +82,10 @@ class GridRunnerBridge(Node):
 
     def _robot_pub(self, robot_id: int):
         if robot_id not in self.robot_pubs:
-            topic = f"/grid_runner/robot/{robot_id}/state"
+            topic = f"/robofleet/robot/{robot_id}/state"
             self.robot_pubs[robot_id] = self.create_publisher(String, topic, 10)
             self.pose_pubs[robot_id] = self.create_publisher(
-                Pose2D, f"/grid_runner/robot/{robot_id}/pose", 10
+                Pose2D, f"/robofleet/robot/{robot_id}/pose", 10
             )
         return self.robot_pubs[robot_id], self.pose_pubs[robot_id]
 
@@ -140,7 +140,7 @@ class GridRunnerBridge(Node):
 
     def _on_ping(self, _request, response):
         response.success = True
-        response.message = "grid_runner_bridge alive"
+        response.message = "robofleet_bridge alive"
         return response
 
 
@@ -150,7 +150,7 @@ def main(args=None) -> None:
             "rclpy not installed — source ROS 2 and install dependencies before running the bridge."
         )
     rclpy.init(args=args)
-    node = GridRunnerBridge()
+    node = RoboFleetBridge()
     try:
         rclpy.spin(node)
     finally:

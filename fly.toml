@@ -3,7 +3,7 @@
 #
 #   fly deploy
 
-app = "grid-runner-dipxk"
+app = "robofleet-dipxk"
 primary_region = "iad"
 
 [build]
@@ -33,5 +33,5 @@ primary_region = "iad"
   memory = "512mb"
 
 [env]
-  GRIDRUNNER_FLEET_SIZE = "18"
-  GRIDRUNNER_TICKS_PER_SECOND = "6"
+  ROBOFLEET_FLEET_SIZE = "18"
+  ROBOFLEET_TICKS_PER_SECOND = "6"

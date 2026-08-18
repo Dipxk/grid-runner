@@ -32,7 +32,7 @@ from .config import SPEED_PRESETS, SimConfig, config_from_env
 from .engine import BLACK_FRIDAY, RESILIENCE_TEST, SimulationEngine
 from .telemetry import TelemetryBridge, telemetry_from_env, telemetry_status
 
-logger = logging.getLogger("gridrunner")
+logger = logging.getLogger("robofleet")
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 

@@ -1,4 +1,4 @@
-gr-env/
+robofleet-env/
 .venv/
 venv/
 __pycache__/

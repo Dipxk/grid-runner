@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>grid_runner_bridge</name>
+  <name>robofleet_bridge</name>
   <version>0.1.0</version>
-  <description>Optional ROS 2 bridge for Grid Runner fleet snapshots</description>
-  <maintainer email="dev@local">Grid Runner</maintainer>
+  <description>Optional ROS 2 bridge for RoboFleet fleet snapshots</description>
+  <maintainer email="dev@local">RoboFleet</maintainer>
   <license>MIT</license>
   <buildtool_depend>ament_python</buildtool_depend>
   <exec_depend>rclpy</exec_depend>

@@ -1,13 +1,13 @@
 services:
-  gridrunner:
+  robofleet:
     build: .
-    container_name: gridrunner
+    container_name: robofleet
     ports:
       - "8000:8000"
     environment:
-      # Any SimConfig field can be overridden via GRIDRUNNER_* env vars.
-      GRIDRUNNER_FLEET_SIZE: "18"
-      GRIDRUNNER_TICKS_PER_SECOND: "6"
+      # Any SimConfig field can be overridden via ROBOFLEET_* env vars.
+      ROBOFLEET_FLEET_SIZE: "18"
+      ROBOFLEET_TICKS_PER_SECOND: "6"
     volumes:
       # Live-reload the demo while iterating locally.
       - ./backend:/app/backend

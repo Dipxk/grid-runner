@@ -1,6 +1,6 @@
 from setuptools import setup
 
-package_name = "grid_runner_bridge"
+package_name = "robofleet_bridge"
 
 setup(
     name=package_name,
@@ -12,13 +12,13 @@ setup(
     ],
     install_requires=["setuptools", "websockets"],
     zip_safe=True,
-    maintainer="Grid Runner",
+    maintainer="RoboFleet",
     maintainer_email="dev@local",
-    description="Optional ROS 2 bridge for Grid Runner",
+    description="Optional ROS 2 bridge for RoboFleet",
     license="MIT",
     entry_points={
         "console_scripts": [
-            "bridge_node = grid_runner_bridge.bridge_node:main",
+            "bridge_node = robofleet_bridge.bridge_node:main",
         ],
     },
 )

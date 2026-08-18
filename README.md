@@ -15,7 +15,7 @@ Open it, and you run a shift — not a pathfinding demo.
 ## Quick start
 
 ```bash
-make setup     # creates ./gr-env and installs dependencies
+make setup     # creates ./robofleet-env and installs dependencies
 make run       # http://localhost:8000
 ```
 
@@ -217,10 +217,10 @@ Workflows in `.github/workflows/`:
 
 ## Optional ROS 2 integration
 
-Bridge package: `integrations/ros2/grid_runner_bridge/` (source implemented).
+Bridge package: `integrations/ros2/robofleet_bridge/` (source implemented).
 
-Publishes `/grid_runner/fleet_state`, `/grid_runner/events`, `/grid_runner/robot/{id}/state`.
-Commands via `/grid_runner/command` (`std_msgs/String` JSON).
+Publishes `/robofleet/fleet_state`, `/robofleet/events`, `/robofleet/robot/{id}/state`.
+Commands via `/robofleet/command` (`std_msgs/String` JSON).
 
 **Not runtime-verified in CI** — requires local ROS 2 + `rclpy`. See `integrations/ros2/README.md`.
 
@@ -229,7 +229,7 @@ Commands via `/grid_runner/command` (`std_msgs/String` JSON).
 ## Optional AWS telemetry & experiment store
 
 `TelemetrySink` + `TelemetryBridge` wire metrics/events to JSON, console, or AWS IoT Core.
-`ExperimentStore` persists benchmark summaries to JSON or DynamoDB (`GRIDRUNNER_DYNAMODB_TABLE`).
+`ExperimentStore` persists benchmark summaries to JSON or DynamoDB (`ROBOFLEET_DYNAMODB_TABLE`).
 
 **AWS IoT and DynamoDB were not live-tested in this environment** — code paths fall back cleanly without credentials.
 
@@ -422,7 +422,7 @@ code path. Full 3D would throw away the part that already looks expensive.
 ```
 backend/
   app/
-    config.py        SimConfig + GRIDRUNNER_* env overrides
+    config.py        SimConfig + ROBOFLEET_* env overrides
     world.py         procedural floor plan, jam overlay
     reservation.py   space-time reservation table  ← correctness core
     pathfinding.py   windowed space-time A*
@@ -437,7 +437,7 @@ backend/
   scripts/{benchmark,planner_comparison}.py
   tests/test_{faults,telemetry,experiments,planner_comparison}.py
 integrations/{aws,ros2}/README.md
-integrations/ros2/grid_runner_bridge/   optional ROS 2 bridge package
+integrations/ros2/robofleet_bridge/   optional ROS 2 bridge package
 benchmarks/{results,planner_comparison,experiments}.{json,md}
 frontend/
   index.html  styles.css

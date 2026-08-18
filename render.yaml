@@ -3,14 +3,14 @@
 #   https://dashboard.render.com/select-repo?type=blueprint
 services:
   - type: web
-    name: grid-runner
+    name: robofleet
     runtime: docker
     plan: free
     branch: main
     autoDeployTrigger: commit
     healthCheckPath: /api/health
     envVars:
-      - key: GRIDRUNNER_FLEET_SIZE
+      - key: ROBOFLEET_FLEET_SIZE
         value: "12"
-      - key: GRIDRUNNER_TICKS_PER_SECOND
+      - key: ROBOFLEET_TICKS_PER_SECOND
         value: "4"

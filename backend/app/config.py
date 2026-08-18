@@ -11,6 +11,16 @@ import os
 from dataclasses import dataclass, asdict
 from typing import Any, Dict, Optional
 
+LOG = logging.getLogger("robofleet")
+
+
+def env_get(suffix: str, default: Optional[str] = None) -> Optional[str]:
+    """Read ``ROBOFLEET_<SUFFIX>``, with a one-release ``GRIDRUNNER_`` fallback."""
+    value = os.environ.get("ROBOFLEET_" + suffix)
+    if value is not None:
+        return value
+    return os.environ.get("GRIDRUNNER_" + suffix, default)
+
 
 @dataclass(frozen=True)
 class SimConfig:
@@ -97,23 +107,24 @@ DEFAULT_CONFIG = SimConfig()
 
 
 def config_from_env(base: Optional[SimConfig] = None) -> SimConfig:
-    """Build a config, overriding any field from ``GRIDRUNNER_<FIELD>`` env vars.
+    """Build a config, overriding any field from ``ROBOFLEET_<FIELD>`` env vars.
 
-    Example: ``GRIDRUNNER_FLEET_SIZE=32 GRIDRUNNER_TICKS_PER_SECOND=10``.
+    Example: ``ROBOFLEET_FLEET_SIZE=32 ROBOFLEET_TICKS_PER_SECOND=10``.
     Unknown or unparsable values are ignored with a warning rather than
-    crashing a container on a typo.
+    crashing a container on a typo. ``GRIDRUNNER_*`` is still accepted so
+    existing Render/Fly env vars keep working.
     """
     config = base or SimConfig()
     overrides: Dict[str, Any] = {}
     for field_name, current in asdict(config).items():
-        raw = os.environ.get("GRIDRUNNER_" + field_name.upper())
+        raw = env_get(field_name.upper())
         if raw is None:
             continue
         caster = float if current is None else type(current)
         try:
             overrides[field_name] = caster(raw)
         except (TypeError, ValueError):
-            logging.getLogger("gridrunner").warning(
+            LOG.warning(
                 "ignoring invalid override %s=%r", field_name, raw
             )
     return config.replace(**overrides) if overrides else config

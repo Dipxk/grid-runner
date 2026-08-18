@@ -25,11 +25,11 @@ RoboFleet (FastAPI on Render/local)
 
 | Topic | Payload |
 | --- | --- |
-| `gridrunner/fleet/metrics` | Rolling throughput, tick compute, collisions, fault counts (every 30 ticks) |
-| `gridrunner/events/fault` | `fault_detected`, `robot_offline`, `planner_failure`, `task_reassigned` |
-| `gridrunner/events/recovery` | `recovery_started`, `recovery_completed`, `robot_recovered` |
-| `gridrunner/events/scenario-start` | Scenario begin |
-| `gridrunner/events/scenario-over` | Scenario grade/score |
+| `robofleet/fleet/metrics` | Rolling throughput, tick compute, collisions, fault counts (every 30 ticks) |
+| `robofleet/events/fault` | `fault_detected`, `robot_offline`, `planner_failure`, `task_reassigned` |
+| `robofleet/events/recovery` | `recovery_started`, `recovery_completed`, `robot_recovered` |
+| `robofleet/events/scenario-start` | Scenario begin |
+| `robofleet/events/scenario-over` | Scenario grade/score |
 
 Planning, reservations, and the execution guard **never** run in AWS.
 
@@ -41,13 +41,13 @@ Works out of the box. By default the server writes to `benchmarks/telemetry.json
 
 ```bash
 # console only
-GRIDRUNNER_TELEMETRY=console make run
+ROBOFLEET_TELEMETRY=console make run
 
 # explicit JSON path
-GRIDRUNNER_TELEMETRY=json GRIDRUNNER_TELEMETRY_PATH=/tmp/grid.jsonl make run
+ROBOFLEET_TELEMETRY=json ROBOFLEET_TELEMETRY_PATH=/tmp/robofleet.jsonl make run
 
 # disable
-GRIDRUNNER_TELEMETRY=null make run
+ROBOFLEET_TELEMETRY=null make run
 ```
 
 Check `/api/health` — it reports which sink is active:
@@ -68,7 +68,7 @@ pip install -r backend/requirements-aws.txt
 
 ### 2. Create IoT resources (AWS Console or CLI)
 
-1. **IoT Core → Things → Create** — name it `grid-runner`
+1. **IoT Core → Things → Create** — name it `robofleet`
 2. **Certificates** — create + activate, download:
    - `device.pem.crt`
    - `private.pem.key`
@@ -82,12 +82,12 @@ pip install -r backend/requirements-aws.txt
     {
       "Effect": "Allow",
       "Action": ["iot:Connect"],
-      "Resource": "arn:aws:iot:REGION:ACCOUNT:client/grid-runner"
+      "Resource": "arn:aws:iot:REGION:ACCOUNT:client/robofleet"
     },
     {
       "Effect": "Allow",
       "Action": ["iot:Publish"],
-      "Resource": "arn:aws:iot:REGION:ACCOUNT:topic/gridrunner/*"
+      "Resource": "arn:aws:iot:REGION:ACCOUNT:topic/robofleet/*"
     }
   ]
 }
@@ -98,14 +98,14 @@ pip install -r backend/requirements-aws.txt
 ### 3. Configure RoboFleet
 
 ```bash
-export GRIDRUNNER_TELEMETRY=aws   # or "all" for JSON + AWS
+export ROBOFLEET_TELEMETRY=aws   # or "all" for JSON + AWS
 
 export AWS_IOT_ENDPOINT=xxxxxxxxxx-ats.iot.us-east-1.amazonaws.com
 export AWS_IOT_CERT_PATH=/path/to/device.pem.crt
 export AWS_IOT_KEY_PATH=/path/to/private.pem.key
 export AWS_IOT_CA_PATH=/path/to/AmazonRootCA1.pem   # optional
-export AWS_IOT_CLIENT_ID=grid-runner
-export AWS_IOT_TOPIC_PREFIX=gridrunner
+export AWS_IOT_CLIENT_ID=robofleet
+export AWS_IOT_TOPIC_PREFIX=robofleet
 
 make run
 ```
@@ -118,16 +118,16 @@ AWS publish is skipped with a log warning.
 **IoT Core → Message routing → Rules:**
 
 ```sql
-SELECT * FROM 'gridrunner/events/#'
+SELECT * FROM 'robofleet/events/#'
 ```
 
-Action: Lambda `gridrunner-ingest` → writes to DynamoDB table `gridrunner_events`:
+Action: Lambda `robofleet-ingest` → writes to DynamoDB table `robofleet_events`:
 
 | pk | sk | payload |
 | --- | --- | --- |
 | `FAULT#R07` | `tick#1042` | `{...}` |
 
-S3 archival: second rule on `gridrunner/fleet/metrics` → Kinesis Firehose or Lambda → S3 prefix `runs/`.
+S3 archival: second rule on `robofleet/fleet/metrics` → Kinesis Firehose or Lambda → S3 prefix `runs/`.
 
 ---
 
@@ -141,13 +141,13 @@ best when you have persistent certs (Secrets Manager, or mounted files on a VM).
 Recommended for portfolio demo:
 
 ```text
-GRIDRUNNER_TELEMETRY=json
+ROBOFLEET_TELEMETRY=json
 ```
 
 Upgrade path when you have AWS:
 
 ```text
-GRIDRUNNER_TELEMETRY=all
+ROBOFLEET_TELEMETRY=all
 AWS_IOT_ENDPOINT=...
 AWS_IOT_CERT_PATH=...   # mount via secret file
 AWS_IOT_KEY_PATH=...

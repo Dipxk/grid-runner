@@ -11,7 +11,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-logger = logging.getLogger("gridrunner.experiments")
+from app.config import env_get
+
+logger = logging.getLogger("robofleet.experiments")
 
 
 class ExperimentStore(ABC):
@@ -71,14 +73,14 @@ class NullExperimentStore(ExperimentStore):
 
 
 def experiment_store_from_env() -> ExperimentStore:
-    table = os.environ.get("GRIDRUNNER_DYNAMODB_TABLE")
+    table = env_get("DYNAMODB_TABLE")
     if table:
         try:
             return DynamoDbExperimentStore(table)
         except Exception as exc:
             logger.warning("DynamoDB store unavailable (%s); falling back to JSON", exc)
     default = Path(__file__).resolve().parents[2] / "benchmarks" / "experiments.json"
-    if os.environ.get("GRIDRUNNER_EXPERIMENT_STORE", "json").lower() in ("null", "off"):
+    if (env_get("EXPERIMENT_STORE", "json") or "json").lower() in ("null", "off"):
         return NullExperimentStore()
     return JsonExperimentStore(default)
 
