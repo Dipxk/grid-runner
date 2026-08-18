@@ -1,13 +1,13 @@
 # Optional ROS 2 bridge
 
-Grid Runner runs **without ROS**. This package bridges live simulation snapshots
+RoboFleet runs **without ROS**. This package bridges live simulation snapshots
 to ROS 2 when you choose to run it.
 
 ```
 ROS 2 bridge (rclpy)
         │
         ▼ WebSocket
-Grid Runner FastAPI server
+RoboFleet FastAPI server
         │
         ▼
 SimulationEngine (unchanged)
@@ -40,7 +40,7 @@ Service `/grid_runner/ping` (`std_srvs/Trigger`) returns bridge liveness.
 **Not executed in CI** — requires a local ROS 2 install.
 
 ```bash
-# Terminal 1 — Grid Runner
+# Terminal 1 — RoboFleet
 make run
 
 # Terminal 2 — ROS 2 (after sourcing your distro)

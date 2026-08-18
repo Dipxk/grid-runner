@@ -1,10 +1,10 @@
 # Optional AWS telemetry architecture
 
-Grid Runner keeps **planning and collision avoidance local**. AWS is only for
+RoboFleet keeps **planning and collision avoidance local**. AWS is only for
 observability when you choose to wire it in.
 
 ```
-Grid Runner (FastAPI on Render/local)
+RoboFleet (FastAPI on Render/local)
         │
         ▼
   TelemetryBridge  ──►  TelemetrySink
@@ -95,7 +95,7 @@ pip install -r backend/requirements-aws.txt
 
 4. Attach policy to the certificate.
 
-### 3. Configure Grid Runner
+### 3. Configure RoboFleet
 
 ```bash
 export GRIDRUNNER_TELEMETRY=aws   # or "all" for JSON + AWS

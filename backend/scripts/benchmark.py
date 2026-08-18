@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Grid Runner load test.
+"""RoboFleet load test.
 
 Measures, for a sweep of fleet sizes, on the real simulation code path:
 
@@ -148,7 +148,7 @@ def to_markdown(results: List[BenchResult], meta: Dict[str, Any]) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Grid Runner benchmark")
+    parser = argparse.ArgumentParser(description="RoboFleet benchmark")
     parser.add_argument("--fleets", type=int, nargs="+", default=[4, 8, 16, 24, 32, 48, 64, 96])
     parser.add_argument("--ticks", type=int, default=600)
     parser.add_argument("--warmup", type=int, default=60)
@@ -171,7 +171,7 @@ def main() -> int:
         "tickRateHz": args.tps,
     }
 
-    print(f"Grid Runner benchmark — {meta['machine']}, Python {meta['python']}")
+    print(f"RoboFleet benchmark — {meta['machine']}, Python {meta['python']}")
     print(f"{args.ticks} measured ticks per fleet size (+{args.warmup} warmup)\n")
     header = f"{'fleet':>6} {'tasks/h':>9} {'mean ms':>9} {'p95 ms':>8} {'max Hz':>8} {'coll':>5} {'guard':>6}"
     print(header)

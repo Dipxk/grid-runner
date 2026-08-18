@@ -294,7 +294,7 @@ def create_app(config: Optional[SimConfig] = None) -> FastAPI:
             runner.telemetry.close()
             await runner.stop()
 
-    app = FastAPI(title="Grid Runner", version="1.0.0", lifespan=lifespan)
+    app = FastAPI(title="RoboFleet", version="1.0.0", lifespan=lifespan)
     app.state.runner = runner
 
     @app.middleware("http")

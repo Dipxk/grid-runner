@@ -1,5 +1,5 @@
 /**
- * Grid Runner client entry point.
+ * RoboFleet client entry point.
  *
  * Responsibilities are deliberately split:
  *   net/socket.js       transport + reconnect

@@ -1,6 +1,6 @@
-# Grid Runner — Multi-Agent Autonomous Fleet Coordination & Resilience Simulator
+# RoboFleet — Multi-Agent Autonomous Fleet Coordination & Resilience Simulator
 
-Grid Runner is a live **autonomous warehouse robot coordination** console:
+RoboFleet is a live **autonomous warehouse robot coordination** console:
 multi-agent path finding with **windowed space-time A-star**, **fault injection**,
 **dynamic replanning**, **collision prevention**, and **resilience testing**.
 You place orders, jam aisles, inject robot faults, and run peak/resilience
@@ -107,7 +107,7 @@ The left rail is ops copy (picks / hour, orders out), not algorithm debug.
 ## Autonomous fleet architecture
 
 ```
-                    GRID RUNNER
+                    ROBOFLEET
 
               Fleet Task Dispatcher
                        │
@@ -456,7 +456,7 @@ frontend/
 
 Re-run `make bench` and `make bench-planners` for numbers on your machine.
 
-> Built **Grid Runner**, a fault-tolerant multi-agent fleet coordination simulator
+> Built **RoboFleet**, a fault-tolerant multi-agent fleet coordination simulator
 > (Python/FastAPI, Canvas): windowed space-time A* with vertex + edge reservations,
 > execution guard, and **zero collisions across randomised and fault-injection test
 > suites**. Sustains **7,464 tasks/hour at 100 robots** (20 ms mean tick, p95 29 ms).

@@ -1,4 +1,4 @@
-# Free Render Blueprint for the live Grid Runner demo.
+# Free Render Blueprint for the live RoboFleet demo.
 # Dashboard → New → Blueprint → this repo, or:
 #   https://dashboard.render.com/select-repo?type=blueprint
 services:

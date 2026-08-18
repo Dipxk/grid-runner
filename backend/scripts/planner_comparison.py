@@ -185,7 +185,7 @@ def to_markdown(runs: List[PlannerRun], meta: Dict[str, Any]) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Grid Runner planner comparison")
+    parser = argparse.ArgumentParser(description="RoboFleet planner comparison")
     parser.add_argument("--fleets", type=int, nargs="+", default=[16, 32])
     parser.add_argument("--ticks", type=int, default=600)
     parser.add_argument("--warmup", type=int, default=60)
