@@ -1,0 +1,3 @@
+# Optional AWS IoT telemetry (install only when wiring cloud observability).
+# Core Grid Runner runs without these packages.
+awsiotsdk>=1.21.0

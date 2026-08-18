@@ -207,10 +207,18 @@ minimal bridge is optional when ROS 2 is present in the environment.
 
 ## Optional AWS telemetry
 
-`backend/app/telemetry.py` defines `TelemetrySink` with `ConsoleTelemetrySink`
-and `JsonTelemetrySink`. Intended MQTT → AWS IoT Core → Lambda → DynamoDB/S3
-flow is documented in `integrations/aws/README.md`. No AWS credentials are
-required for local operation; telemetry sinks are no-ops unless configured.
+`backend/app/telemetry.py` provides a `TelemetrySink` abstraction wired into the
+live server via `TelemetryBridge`. Local modes work without AWS:
+
+```bash
+GRIDRUNNER_TELEMETRY=json    # default — writes benchmarks/telemetry.jsonl
+GRIDRUNNER_TELEMETRY=console
+GRIDRUNNER_TELEMETRY=aws     # MQTT → IoT Core (needs certs + awsiotsdk)
+```
+
+`/api/health` reports the active sink. Full AWS setup (IoT thing, policy, Lambda →
+DynamoDB/S3) is documented in `integrations/aws/README.md`. Planning stays local;
+AWS is observability only.
 
 ---
 

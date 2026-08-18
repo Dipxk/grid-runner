@@ -30,6 +30,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import SPEED_PRESETS, SimConfig, config_from_env
 from .engine import BLACK_FRIDAY, RESILIENCE_TEST, SimulationEngine
+from .telemetry import TelemetryBridge, telemetry_from_env, telemetry_status
 
 logger = logging.getLogger("gridrunner")
 
@@ -94,6 +95,7 @@ class SimulationRunner:
     def __init__(self, config: Optional[SimConfig] = None) -> None:
         self.config = config or config_from_env()
         self.engine = SimulationEngine(self.config)
+        self.telemetry = TelemetryBridge(telemetry_from_env())
         self.clients: Dict[WebSocket, ClientChannel] = {}
         self.running = True
         self.ticks_per_second = self.config.ticks_per_second
@@ -175,6 +177,7 @@ class SimulationRunner:
                 async with self._lock:
                     snapshot = self.engine.step()
                 snapshot.update(self.state_header())
+                self.telemetry.on_snapshot(snapshot)
                 self.broadcast(snapshot)
                 next_at += self.tick_interval
             except asyncio.CancelledError:
@@ -232,6 +235,7 @@ class SimulationRunner:
             elif action == "step":
                 snapshot = self.engine.step()
                 snapshot.update(self.state_header())
+                self.telemetry.on_snapshot(snapshot)
                 self.broadcast(snapshot)
             elif action == "jam":
                 cell = (int(message.get("x", 0)), int(message.get("y", 0)))
@@ -287,6 +291,7 @@ def create_app(config: Optional[SimConfig] = None) -> FastAPI:
         try:
             yield
         finally:
+            runner.telemetry.close()
             await runner.stop()
 
     app = FastAPI(title="Grid Runner", version="1.0.0", lifespan=lifespan)
@@ -309,6 +314,7 @@ def create_app(config: Optional[SimConfig] = None) -> FastAPI:
                 "tick": runner.engine.tick,
                 "fleet": len(runner.engine.robots),
                 "clients": len(runner.clients),
+                **telemetry_status(runner.telemetry.sink),
             }
         )
 
