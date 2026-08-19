@@ -3,7 +3,7 @@ PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 PORT ?= 8000
 
-.PHONY: help setup run test test-fast test-resilience bench bench-planners docker clean
+.PHONY: help setup run test test-fast test-resilience bench bench-planners docker deploy-fly clean
 
 help:
 	@echo "make setup   - create the virtualenv and install dev dependencies"
@@ -14,6 +14,7 @@ help:
 	@echo "make bench   - run the load test and write benchmarks/results.{json,md}"
 	@echo "make bench-planners - WHCA* vs baseline comparison benchmark"
 	@echo "make docker  - build and start via docker-compose"
+	@echo "make deploy-fly - deploy live demo to Fly.io (requires flyctl auth login once)"
 
 setup:
 	python3 -m venv $(VENV)
@@ -43,6 +44,9 @@ bench-planners:
 
 docker:
 	docker compose up --build
+
+deploy-fly:
+	bash scripts/deploy-fly.sh
 
 clean:
 	rm -rf $(VENV) backend/**/__pycache__ backend/.pytest_cache

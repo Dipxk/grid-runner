@@ -33,5 +33,5 @@ primary_region = "iad"
   memory = "512mb"
 
 [env]
-  ROBOFLEET_FLEET_SIZE = "18"
-  ROBOFLEET_TICKS_PER_SECOND = "6"
+  ROBOFLEET_FLEET_SIZE = "12"
+  ROBOFLEET_TICKS_PER_SECOND = "4"
