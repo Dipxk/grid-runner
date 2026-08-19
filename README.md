@@ -9,8 +9,8 @@ table and the execution guard keeps transitions safe even when plans go stale.
 
 Open it, and you run a shift — not a pathfinding demo.
 
-**Live demo:** https://grid-runner-vnj2.onrender.com  
-(Free Render host — first load after idle can take ~30–60s.)
+**Live demo:** https://robofleet-dipxk.fly.dev  
+(Hosted on Fly.io — always-on, no Render cold-start delay.)
 
 ## Quick start
 
