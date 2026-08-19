@@ -449,22 +449,3 @@ frontend/
     ui/{metrics,inspector,controls,toasts,ticker,scenario}.js
     audio/sound.js
 ```
-
----
-
-## Resume bullets (measured, not estimated)
-
-Re-run `make bench` and `make bench-planners` for numbers on your machine.
-
-> Built **RoboFleet**, a fault-tolerant multi-agent fleet coordination simulator
-> (Python/FastAPI, Canvas): windowed space-time A* with vertex + edge reservations,
-> execution guard, and **zero collisions across randomised and fault-injection test
-> suites**. Sustains **7,464 tasks/hour at 100 robots** (20 ms mean tick, p95 29 ms).
-
-> Implemented deterministic **fault injection** (offline / slow / planner failure /
-> comm delay) with autonomous recovery, task reassignment, and a graded **Resilience
-> Test** scenario — recovery state machine drives real engine behaviour, not UI theatre.
-
-> Added **CI + planner comparison benchmark** (WHCA* vs reservation-free baseline on
-> identical seeds) demonstrating why space-time reservations reduce guard interventions
-> at scale; optional telemetry/ROS/AWS adapter docs without bloating the core sim.
